@@ -36,3 +36,5 @@ build/
 
 # Project exclude paths
 /.claude/
+mvnw.cmd
+mvnw
