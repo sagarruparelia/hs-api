@@ -4,12 +4,12 @@
 
 Build a **Patient App** that generates SMART Health Links (SHL) enabling patients to share encrypted FHIR health data with providers via QR codes. The app implements the Patient-Shared Health Document via SHL spec (must-have), with a foundation extensible to the full SHL protocol (long-term).
 
-**Current state**: Empty Spring Boot 4.0.3 + Java 25 skeleton with WebFlux + Reactive MongoDB + OAuth2 Client + Validation + Actuator. Package: `com.chanakya.hsapi`.
+**Current state**: Empty Spring Boot 4.0.3 + Java 25 skeleton. Package: `com.chanakya.hsapi`.
 
 **Spec sources**:
-- Must-have: hackmd.io/@Jyncr3iQS1iJA09xcuh7QA/rkGeS5cIZe
-- Must-have: hackmd.io/@Jyncr3iQS1iJA09xcuh7QA/SJHzQ1aDbx
-- Long-term: build.fhir.org/ig/HL7/smart-health-cards-and-links/links-specification.html
+- Must-have: https://hackmd.io/@Jyncr3iQS1iJA09xcuh7QA/rkGeS5cIZe
+- Must-have: https://hackmd.io/@Jyncr3iQS1iJA09xcuh7QA/SJHzQ1aDbx
+- Long-term: https://build.fhir.org/ig/HL7/smart-health-cards-and-links/links-specification.html
 
 ---
 
@@ -17,20 +17,34 @@ Build a **Patient App** that generates SMART Health Links (SHL) enabling patient
 
 | Concern | Technology | Role |
 |---------|-----------|------|
-| **FHIR data store** | AWS HealthLake (FHIR R4) | Authoritative store for Patient, DocumentReference, Bundles, all FHIR resources |
-| **Transactional DB** | MongoDB (reactive) | SHL metadata, audit logs, app state |
+| **FHIR data store** | AWS HealthLake (FHIR R4 v4.0.1 only) | Authoritative store for Patient, DocumentReference, Bundles, all FHIR resources |
+| **Transactional DB** | MongoDB (imperative + virtual threads) | SHL metadata, audit logs, app state |
 | **SHL payload storage** | AWS S3 | Encrypted JWE blobs (the actual shared payloads) |
-| **GraphQL** | Spring for GraphQL (WebFlux) | Query layer over FHIR resources from HealthLake |
-| **API framework** | WebFlux (reactive) | REST endpoints (SHL protocol) + GraphQL |
+| **GraphQL** | Spring for GraphQL 2.0 (WebMVC transport) | Query layer over FHIR resources from HealthLake |
+| **Web framework** | Spring WebMVC + Virtual Threads | REST endpoints (SHL protocol) + GraphQL |
+| **Observability** | Micrometer 1.16.x + OTLP | Metrics, traces via OpenTelemetry |
+| **Rate limiting** | Bucket4j 8.16.1 (core API, no starter) | API rate limiting with MongoDB backend |
 
----
+### Critical: Virtual Threads + Imperative over Reactive
 
-## Skills to Install (Before Implementation)
+The skill inventory confirms: with `spring.threads.virtual.enabled=true`, **imperative MongoRepository gives equivalent I/O scalability to reactive** with far simpler code. This means:
 
-| Skill | Source | Purpose |
-|-------|--------|---------|
-| `fhir-developer` | `github.com/TopologyHealth/ClaudeFHIRSkill` | FHIR R4 resource construction, validation, HL7 compliance |
-| `aws-skills` | `github.com/zxkane/aws-skills` | AWS SDK patterns, S3, IAM best practices |
+- **Switch from `spring-boot-starter-webflux` to `spring-boot-starter-webmvc`**
+- **Switch from `spring-boot-starter-data-mongodb-reactive` to `spring-boot-starter-data-mongodb`**
+- Use `MongoRepository` (not `ReactiveMongoRepository`)
+- Use `RestClient` (not `WebClient`) for HealthLake calls
+- MongoDB driver 5.6.x is virtual-thread-safe by default
+
+### Critical: Jackson 2/3 Dual-Stack
+
+HAPI FHIR 8.x uses Jackson 2 (`com.fasterxml.jackson`) exclusively and does NOT support Jackson 3. Spring Boot 4 defaults to Jackson 3 (`tools.jackson`). Both must coexist:
+
+- Jackson 3 (`tools.jackson`, `JsonMapper`): Used by Spring MVC/GraphQL for HTTP serialization
+- Jackson 2 (`com.fasterxml.jackson`, `ObjectMapper`): Used by HAPI FHIR for FHIR resource serialization
+- **Never let HAPI FHIR serialize through Spring's default `JsonMapper`**
+- **Never register `@JsonComponent` beans expecting them to apply to FHIR resources**
+- Explicitly include `com.fasterxml.jackson.core:jackson-databind:2.18+` for HAPI FHIR
+- Configure `spring.jackson2.*` properties for HAPI FHIR contexts
 
 ---
 
@@ -42,18 +56,18 @@ com.chanakya.hsapi/
 
   config/
     SecurityConfig.java           # Public /shl/** vs authenticated /api/**
-    MongoConfig.java              # Reactive MongoDB, programmatic indexes
-    AwsConfig.java                # S3AsyncClient, HealthLake WebClient beans
-    GraphQlConfig.java            # Spring GraphQL + WebFlux wiring
-    CryptoConfig.java             # Master key bean from env/secrets
-    WebFluxConfig.java            # CORS, content negotiation
+    MongoConfig.java              # Imperative MongoDB, programmatic indexes
+    AwsConfig.java                # S3Client, HealthLake RestClient, Apache5HttpClient
+    GraphQlConfig.java            # Instrumentation beans (complexity, depth limits)
+    CryptoConfig.java             # Master key bean (env dev / KMS prod)
+    JacksonConfig.java            # Jackson 3 for Spring + Jackson 2 isolation for HAPI FHIR
+    WebMvcConfig.java             # CORS, content negotiation
 
   shl/                            # Smart Health Link domain
-    ShlRouter.java                # RouterFunction: public GET/POST /shl/{id}
-    ShlHandler.java               # Protocol handlers (JWE retrieval, manifest)
+    ShlController.java            # Public protocol endpoints: GET/POST /shl/{id}
     ShlManagementController.java  # RestController: /api/v1/shl/** (authenticated)
     model/
-      ShlDocument.java            # Document - SHL metadata in MongoDB
+      ShlDocument.java            # @Document - SHL metadata in MongoDB
       ShlStatus.java              # ACTIVE, EXPIRED, REVOKED
       ShlFlag.java                # U, P, L
     dto/
@@ -67,7 +81,7 @@ com.chanakya.hsapi/
       ShlService.java             # Create, list, revoke SHLs
       ShlRetrievalService.java    # Public retrieval (U-flag GET, future POST)
     repository/
-      ShlRepository.java          # ReactiveCrudRepository
+      ShlRepository.java          # MongoRepository (imperative)
 
   crypto/                         # Encryption domain
     EncryptionService.java        # JWE: alg=dir, enc=A256GCM (Nimbus JOSE)
@@ -78,8 +92,8 @@ com.chanakya.hsapi/
 
   fhir/                           # FHIR + HealthLake domain
     FhirBundleService.java        # Build PatientSharedBundle (HAPI FHIR R4)
-    FhirSerializationService.java # FhirContext singleton, JSON parse/serialize
-    HealthLakeClient.java         # WebClient-based FHIR REST client to HealthLake
+    FhirSerializationService.java # FhirContext.forR4() singleton, Jackson 2 isolation
+    HealthLakeClient.java         # RestClient-based FHIR REST client with SigV4
     dto/
       UploadHealthDataRequest.java
       PatientInfo.java
@@ -89,7 +103,7 @@ com.chanakya.hsapi/
       HealthDataController.java   # RestController: /api/v1/health-data/**
 
   graphql/                        # GraphQL layer over FHIR
-    PatientGraphQlController.java
+    PatientGraphQlController.java     # @BatchMapping for associations
     DocumentReferenceGraphQlController.java
     BundleGraphQlController.java
     type/                         # GraphQL Java types mapping FHIR resources
@@ -101,20 +115,20 @@ com.chanakya.hsapi/
     S3PayloadService.java         # Upload/retrieve encrypted JWE from S3
 
   audit/                          # Audit logging domain
-    AuditService.java             # Fire-and-forget reactive audit logging
+    AuditService.java             # Audit logging to MongoDB
     AuditController.java          # RestController: /api/v1/audit/**
     model/
-      AuditLogDocument.java       # Document - every interaction in MongoDB
+      AuditLogDocument.java       # @Document - every interaction in MongoDB
       AuditAction.java            # SHL_CREATED, SHL_ACCESSED, etc.
       AuditOutcome.java           # SUCCESS, FAILURE, DENIED
     dto/
       AuditLogEntry.java          # Record: patient-facing audit entry
     repository/
-      AuditLogRepository.java
+      AuditLogRepository.java     # MongoRepository (imperative)
 
   common/
     exception/
-      GlobalExceptionHandler.java
+      GlobalExceptionHandler.java     # @RestControllerAdvice
       ShlNotFoundException.java
       ShlExpiredException.java
       ShlAccessDeniedException.java
@@ -128,7 +142,7 @@ com.chanakya.hsapi/
 
 ## Data Architecture
 
-### MongoDB Collections (Transactional Data)
+### MongoDB Collections (Transactional Data) — Imperative + Virtual Threads
 
 **`smart_health_links`** - SHL metadata only (no payload data)
 
@@ -166,11 +180,11 @@ Indexes: `{shlId, timestamp desc}`, `{patientId, timestamp desc}`, `{timestamp} 
 
 ### AWS HealthLake (FHIR Data Store)
 
-- Stores all FHIR R4 resources: Patient, DocumentReference, Bundle, Conditions, Medications, Observations
-- Accessed via FHIR REST API (HealthLake exposes standard FHIR endpoints)
-- HealthLakeClient uses WebClient with AWS SigV4 signing
+- FHIR R4 v4.0.1 ONLY (never attempt R5 resources)
+- FHIR REST API accessed via RestClient with AWS SigV4 signing
 - CRUD: POST /Patient, GET /Patient/{id}, POST /Bundle, GET /Bundle/{id}
-- HealthLake handles FHIR validation, indexing, and search
+- HealthLake handles FHIR validation, indexing, NLP, and search
+- `FhirContext.forR4()` must be used for all HealthLake interactions
 
 ### AWS S3 (Encrypted Payload Storage)
 
@@ -187,12 +201,12 @@ Indexes: `{shlId, timestamp desc}`, `{patientId, timestamp desc}`, `{timestamp} 
 ### Flow 1: Upload Health Data
 ```
 Patient App -> POST /api/v1/health-data (UploadHealthDataRequest)
-  1. Build FHIR R4 PatientSharedBundle via FhirBundleService (HAPI FHIR)
+  1. Build FHIR R4 PatientSharedBundle via FhirBundleService (HAPI FHIR, Jackson 2)
      - Patient resource with demographics
      - DocumentReference: status=current, type=LOINC 60591-5,
        category=patient-shared, embedded PDF
      - Additional FHIR resources
-  2. POST Bundle to HealthLake via HealthLakeClient
+  2. POST Bundle to HealthLake via HealthLakeClient (RestClient + SigV4)
   3. HealthLake validates, indexes, returns resource ID
   4. Log HEALTH_DATA_UPLOADED audit event
   5. Return HealthDataSummary with healthLakeResourceId
@@ -202,7 +216,7 @@ Patient App -> POST /api/v1/health-data (UploadHealthDataRequest)
 ```
 Patient App -> POST /api/v1/shl (CreateShlRequest)
   1. Fetch FHIR Bundle from HealthLake by healthLakeResourceId
-  2. Serialize Bundle to FHIR JSON via FhirSerializationService
+  2. Serialize Bundle to FHIR JSON via FhirSerializationService (Jackson 2 path)
   3. Generate 32-byte AES key via KeyGenerationService
   4. Encrypt FHIR JSON -> JWE (alg=dir, enc=A256GCM, cty=application/fhir+json)
   5. Upload JWE blob to S3 (shl/{shlId}/payload.jwe)
@@ -237,7 +251,8 @@ Patient App -> POST /graphql
   1. GraphQL controller calls HealthLakeClient
   2. HealthLakeClient queries HealthLake FHIR REST API
   3. Maps FHIR resources -> GraphQL types
-  4. Returns structured data
+  4. Uses @BatchMapping for associations (prevent N+1)
+  5. Returns structured data
 ```
 
 ---
@@ -266,33 +281,145 @@ Patient App -> POST /graphql
 ### GraphQL - FHIR Resource Queries
 | Path | Description |
 |------|-------------|
-| POST /graphql | Patient, DocumentReference, Bundle queries |
+| POST /graphql | Patient, DocumentReference, Bundle queries (Connection-spec pagination) |
 
 ---
 
-## Dependencies to Add
+## Dependencies
 
-**Encryption:**
-- `com.nimbusds:nimbus-jose-jwt:10.8` - JWE with AES-256-GCM
+### Consolidated version reference
 
-**FHIR R4 (Bundle construction only):**
-- `ca.uhn.hapi.fhir:hapi-fhir-base:8.6.0` (exclude Jetty)
-- `ca.uhn.hapi.fhir:hapi-fhir-structures-r4:8.6.0` (exclude Jetty)
+| Technology | Version | Artifact |
+|---|---|---|
+| JDK | 25.0.2 (LTS) | openjdk-25 |
+| Spring Boot | 4.0.3 | spring-boot-starter |
+| Spring Framework | 7.0.5 | spring-framework-bom |
+| Spring for GraphQL | 2.0.x | spring-boot-starter-graphql |
+| Spring Security | 7.0.3 | spring-boot-starter-security |
+| Spring Data MongoDB | 5.0.x | spring-boot-starter-data-mongodb |
+| Jackson 3 | 3.0.x | tools.jackson:jackson-bom (Spring default) |
+| Jackson 2 | 2.18.x | com.fasterxml.jackson (for HAPI FHIR) |
+| GraphQL Java | 25.0 | com.graphql-java:graphql-java |
+| HAPI FHIR | 8.6.2 | ca.uhn.hapi.fhir:hapi-fhir-base |
+| AWS SDK Java v2 | 2.42.4 (BOM) | software.amazon.awssdk:bom |
+| Nimbus JOSE+JWT | 10.8 | com.nimbusds:nimbus-jose-jwt |
+| Micrometer | 1.16.x | io.micrometer:micrometer-bom |
+| Testcontainers | 2.0.3 | org.testcontainers:testcontainers-bom |
+| Bucket4j | 8.16.1 | com.bucket4j:bucket4j_jdk17-core |
+| MongoDB Java Driver | 5.6.3 | org.mongodb:mongodb-driver-sync |
 
-**AWS SDK v2 (async):**
-- `software.amazon.awssdk:bom:2.31.x` (in dependencyManagement)
-- `software.amazon.awssdk:s3`
-- `software.amazon.awssdk:netty-nio-client`
-- `software.amazon.awssdk:healthlake`
-- `software.amazon.awssdk:kms` (prod profile: master key management)
+### Add to pom.xml
 
-**GraphQL:**
-- `org.springframework.boot:spring-boot-starter-graphql`
-- `org.springframework.boot:spring-boot-starter-graphql-test` (test scope)
+```xml
+<!-- Web (replace webflux) -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-webmvc</artifactId>
+</dependency>
 
-**Remove:**
-- `org.projectlombok:lombok` (use records + explicit code)
-- Lombok from maven-compiler-plugin annotationProcessorPaths
+<!-- MongoDB imperative (replace reactive) -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-mongodb</artifactId>
+</dependency>
+
+<!-- GraphQL -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-graphql</artifactId>
+</dependency>
+
+<!-- JWE Encryption -->
+<dependency>
+    <groupId>com.nimbusds</groupId>
+    <artifactId>nimbus-jose-jwt</artifactId>
+    <version>10.8</version>
+</dependency>
+
+<!-- FHIR R4 (uses Jackson 2 internally - exclude Jetty) -->
+<dependency>
+    <groupId>ca.uhn.hapi.fhir</groupId>
+    <artifactId>hapi-fhir-base</artifactId>
+    <version>8.6.2</version>
+    <exclusions>
+        <exclusion><groupId>org.eclipse.jetty</groupId><artifactId>*</artifactId></exclusion>
+        <exclusion><groupId>org.eclipse.jetty.ee10</groupId><artifactId>*</artifactId></exclusion>
+    </exclusions>
+</dependency>
+<dependency>
+    <groupId>ca.uhn.hapi.fhir</groupId>
+    <artifactId>hapi-fhir-structures-r4</artifactId>
+    <version>8.6.2</version>
+    <exclusions>
+        <exclusion><groupId>org.eclipse.jetty</groupId><artifactId>*</artifactId></exclusion>
+        <exclusion><groupId>org.eclipse.jetty.ee10</groupId><artifactId>*</artifactId></exclusion>
+    </exclusions>
+</dependency>
+
+<!-- Jackson 2 for HAPI FHIR (explicit, alongside Jackson 3) -->
+<dependency>
+    <groupId>com.fasterxml.jackson.core</groupId>
+    <artifactId>jackson-databind</artifactId>
+    <version>2.18.3</version>
+</dependency>
+
+<!-- AWS SDK v2 BOM (in dependencyManagement) -->
+<!-- version: 2.42.4 -->
+<dependency>
+    <groupId>software.amazon.awssdk</groupId>
+    <artifactId>s3</artifactId>
+</dependency>
+<dependency>
+    <groupId>software.amazon.awssdk</groupId>
+    <artifactId>healthlake</artifactId>
+</dependency>
+<dependency>
+    <groupId>software.amazon.awssdk</groupId>
+    <artifactId>kms</artifactId>
+</dependency>
+<!-- Apache 5 HTTP client for virtual thread safety -->
+<dependency>
+    <groupId>software.amazon.awssdk</groupId>
+    <artifactId>apache5-client</artifactId>
+</dependency>
+
+<!-- Rate limiting -->
+<dependency>
+    <groupId>com.bucket4j</groupId>
+    <artifactId>bucket4j_jdk17-core</artifactId>
+    <version>8.16.1</version>
+</dependency>
+<dependency>
+    <groupId>com.bucket4j</groupId>
+    <artifactId>bucket4j_jdk17-mongodb-sync</artifactId>
+    <version>8.16.1</version>
+</dependency>
+
+<!-- Observability -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-opentelemetry</artifactId>
+</dependency>
+
+<!-- Test -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-graphql-test</artifactId>
+    <scope>test</scope>
+</dependency>
+<dependency>
+    <groupId>org.testcontainers</groupId>
+    <artifactId>testcontainers-mongodb</artifactId>
+    <version>2.0.3</version>
+    <scope>test</scope>
+</dependency>
+```
+
+### Remove from pom.xml
+- `spring-boot-starter-webflux` (replace with `spring-boot-starter-webmvc`)
+- `spring-boot-starter-data-mongodb-reactive` (replace with `spring-boot-starter-data-mongodb`)
+- `org.projectlombok:lombok` and its annotation processor config
+- All `*-reactive-test` dependencies
 
 ---
 
@@ -300,11 +427,13 @@ Patient App -> POST /graphql
 
 File: `src/main/resources/graphql/schema.graphqls`
 
+Use `ConnectionTypeDefinitionConfigurer` to auto-generate Connection/Edge/PageInfo types. Only define node types.
+
 ```graphql
 type Query {
     patient(id: ID!): Patient
     patients: [Patient!]!
-    documentReferences(patientId: ID!): [DocumentReference!]!
+    documentReferences(patientId: ID!, first: Int, after: String): DocumentReferenceConnection!
     bundle(id: ID!): Bundle
 }
 
@@ -314,10 +443,18 @@ type Patient {
     birthDate: String
     gender: String
     identifier: [Identifier!]
+    documentReferences: [DocumentReference!]!
 }
 
-type HumanName { family: String, given: [String!] }
-type Identifier { system: String, value: String }
+type HumanName {
+    family: String
+    given: [String!]
+}
+
+type Identifier {
+    system: String
+    value: String
+}
 
 type DocumentReference {
     id: ID!
@@ -328,10 +465,26 @@ type DocumentReference {
     content: [DocumentContent!]
 }
 
-type CodeableConcept { coding: [Coding!], text: String }
-type Coding { system: String, code: String, display: String }
-type DocumentContent { attachment: Attachment }
-type Attachment { contentType: String, title: String, size: Int }
+type CodeableConcept {
+    coding: [Coding!]
+    text: String
+}
+
+type Coding {
+    system: String
+    code: String
+    display: String
+}
+
+type DocumentContent {
+    attachment: Attachment
+}
+
+type Attachment {
+    contentType: String
+    title: String
+    size: Int
+}
 
 type Bundle {
     id: ID!
@@ -362,27 +515,74 @@ everything else      -> denyAll()
 
 ## Key Architectural Decisions
 
-1. **Pre-encrypt at SHL creation, store JWE in S3** - Retrieval is fast (S3 fetch + return), no crypto on hot path. S3 provides durable blob storage.
+1. **Imperative + Virtual Threads over Reactive** - `spring.threads.virtual.enabled=true` with imperative MongoRepository gives equivalent I/O scalability without reactive complexity. MongoDB driver 5.6.x is virtual-thread-safe. Switch from WebFlux to WebMVC.
 
-2. **HealthLake for FHIR, not MongoDB** - HealthLake handles FHIR validation, indexing, NLP, and compliance. MongoDB shouldn't parse FHIR.
+2. **Jackson 2/3 dual-stack** - HAPI FHIR 8.x requires Jackson 2; Spring Boot 4 defaults to Jackson 3. Both coexist. FHIR serialization uses isolated Jackson 2 `ObjectMapper`. Spring MVC/GraphQL uses Jackson 3 `JsonMapper`.
 
-3. **MongoDB for metadata + audit only** - Reactive MongoDB driver fits WebFlux. SHL metadata is transactional. Audit needs fast writes.
+3. **Pre-encrypt at SHL creation, store JWE in S3** - Retrieval is fast (S3 fetch + return), no crypto on hot path. S3 provides durable blob storage.
 
-4. **Spring for GraphQL over DGS** - Official Spring integration, works natively with WebFlux, first-class Spring Boot 4 support.
+4. **HealthLake for FHIR, not MongoDB** - HealthLake handles FHIR validation, indexing, NLP, and compliance. R4 only.
 
-5. **WebClient for HealthLake FHIR API** - HealthLake exposes FHIR REST endpoints. WebClient is reactive and supports AWS SigV4.
+5. **MongoDB for metadata + audit only** - SHL metadata is transactional. Audit needs fast writes. Imperative driver with virtual threads.
 
-6. **HAPI FHIR for Bundle construction only** - Build FHIR resources in-memory, serialize to JSON, POST to HealthLake. Not for HTTP serving.
+6. **Spring for GraphQL 2.0 with @BatchMapping** - Official Spring integration, `@BatchMapping` prevents N+1. `ConnectionTypeDefinitionConfigurer` auto-generates pagination types.
 
-7. **Wrap blocking ops in boundedElastic** - HAPI FHIR, JCE crypto are blocking; must not run on event loop threads.
+7. **Apache 5 HTTP client for AWS SDK** - Default Apache 4.5 client pins virtual threads. Apache 5 (`apache5-client`, GA since v2.41.0) is virtual-thread-safe.
 
 8. **256-bit secure random SHL IDs** - SHL spec requires 256+ bits of entropy in the URL.
 
 9. **No Lombok** - Spring Boot 4 best practice: use Java records for DTOs, explicit code for entities.
 
-10. **Dual key management** - Environment variable master key for local dev (simple base64 AES-256 key), AWS KMS for staging/prod (via Spring profiles). MasterKeyService abstracts the difference.
+10. **Dual key management** - Environment variable master key for local dev, AWS KMS for staging/prod. MasterKeyService interface abstracts the difference.
 
-11. **QR code generation is client-side** - Server returns shlinkUrl and base64url-encoded payload. The UI application generates QR codes from the SHLink URL. No ZXing dependency needed server-side.
+11. **QR code generation is client-side** - Server returns shlinkUrl and base64url-encoded payload. UI generates QR codes.
+
+12. **Bucket4j core API for rate limiting** - No Spring Boot 4 starter yet. Use `bucket4j_jdk17-core` with `bucket4j_jdk17-mongodb-sync` for distributed rate limiting.
+
+---
+
+## SHL Protocol Details
+
+### SHLink Payload Structure (encoded in URL)
+```json
+{
+  "url": "https://api.example.com/shl/{id}",
+  "flag": "U",
+  "key": "rxTgYlOaKJPFtcEd0qcceN8wEU4p94SqAwIWQe6uX7Q",
+  "exp": 1706745600,
+  "label": "Patient's health summary"
+}
+```
+
+### SHLink URL Format
+```
+shlink:/eyJ1cmwiOiJodHRwczovL...base64url-encoded-payload
+```
+
+### JWE Encryption Parameters
+- Algorithm: `dir` (direct encryption with shared symmetric key)
+- Encryption: `A256GCM` (AES-256-GCM authenticated encryption)
+- Content Type: `application/fhir+json`
+- Compression: `DEF` (DEFLATE, optional)
+
+### FHIR Bundle Structure (PatientSharedBundle)
+```
+Bundle (type: collection, timestamp: required)
+  Entry[0]: Patient (demographics, identifier)
+  Entry[1]: DocumentReference
+    - status: current
+    - type: LOINC 60591-5 (Patient summary Document)
+    - category: patient-shared
+    - content.attachment: base64-encoded PDF (application/pdf)
+  Entry[2..n]: Additional FHIR resources (Conditions, Medications, Observations)
+```
+
+### Expiration Guidance
+| Scenario | Suggested Expiration |
+|----------|---------------------|
+| In-person visit (QR on phone) | 5-15 minutes |
+| Printed QR for appointment | 24-48 hours |
+| Ongoing relationship | Patient preference |
 
 ---
 
@@ -390,7 +590,7 @@ everything else      -> denyAll()
 
 | Feature | Extension Point |
 |---------|----------------|
-| Manifest POST | ShlHandler.handleManifestRetrieval() returns 501 stub |
+| Manifest POST | ShlController POST handler returns 501 stub |
 | Passcode (P flag) | ShlDocument.passcodeHash, remainingPasscodeAttempts (nullable) |
 | Long-term links (L flag) | healthLakeResourceId enables re-fetch + re-encrypt |
 | Multiple content types | contentType field, extensible manifest file entries |
@@ -399,46 +599,38 @@ everything else      -> denyAll()
 
 ---
 
-## Output
-
-Write the full architecture document to `docs/architecture.md` in the project root, containing all sections from this plan (infrastructure, package structure, data architecture, flows, endpoints, dependencies, GraphQL schema, security, decisions, phase 2 extensions, build sequence).
-
----
-
 ## Build Sequence
 
-### Step 0: Write Architecture Document + Install Skills
-- Write `docs/architecture.md` with full architecture documentation
+### Step 0: Install Skills + Write Docs
 - Install fhir-developer and aws-skills Claude Code skills
-- Clone and install `TopologyHealth/ClaudeFHIRSkill` to `.claude/skills/fhir-developer/`
-- Clone and install `zxkane/aws-skills` to `.claude/skills/aws-skills/`
-- **Verify**: Skills appear in skill list
+- Save CLAUDE.md with skill inventory rules
 
 ### Step 1: Project Foundation
-- Modify pom.xml: add all dependencies, remove Lombok, add AWS BOM, add start-class property
-- Expand application.yaml: MongoDB, AWS (existing HealthLake endpoint), OAuth2, crypto, SHL config
-- Create config classes: SecurityConfig, MongoConfig, AwsConfig, CryptoConfig (with profile-based key management)
+- Modify pom.xml: replace webflux with webmvc, reactive-mongo with imperative, add all dependencies, remove Lombok, add AWS BOM, add start-class property
+- Expand application.yaml: MongoDB (spring.mongodb.*), AWS (HealthLake endpoint, S3 bucket), OAuth2, crypto, SHL config, `spring.threads.virtual.enabled=true`
+- Create config classes: SecurityConfig, MongoConfig, AwsConfig (Apache5HttpClient), CryptoConfig, JacksonConfig (dual-stack)
 - **Verify**: App starts, connects to MongoDB, S3 client initializes
 
 ### Step 2: Common Infrastructure
-- exception types + GlobalExceptionHandler
+- Exception types + GlobalExceptionHandler (@RestControllerAdvice)
 - Base64UrlUtil, SecureIdGenerator
 - **Verify**: Unit tests pass
 
 ### Step 3: Crypto Module
-- KeyGenerationService, EncryptionService, MasterKeyService
+- KeyGenerationService, EncryptionService, MasterKeyService (Local + KMS)
 - **Verify**: Generate key -> encrypt -> decrypt round-trip. JWE headers correct.
 
 ### Step 4: Audit Module
-- AuditLogDocument, AuditAction, AuditOutcome, AuditLogRepository, AuditService
-- **Verify**: Integration test: log event -> retrieve by shlId and patientId
+- AuditLogDocument, AuditAction, AuditOutcome, AuditLogRepository (imperative), AuditService
+- **Verify**: Integration test with Testcontainers MongoDB: log event -> retrieve
 
 ### Step 5: S3 Payload Service
-- S3PayloadService: upload/retrieve JWE blobs
+- S3PayloadService: upload/retrieve JWE blobs (using S3Client with Apache5HttpClient)
 - **Verify**: Upload bytes -> retrieve bytes round-trip
 
 ### Step 6: FHIR + HealthLake
-- FhirSerializationService, FhirBundleService, HealthLakeClient
+- FhirSerializationService (FhirContext.forR4(), Jackson 2 isolation)
+- FhirBundleService, HealthLakeClient (RestClient + SigV4)
 - HealthDataController + DTOs
 - **Verify**: Build PatientSharedBundle -> POST to HealthLake -> GET back
 
@@ -447,28 +639,38 @@ Write the full architecture document to `docs/architecture.md` in the project ro
 - **Verify**: Upload data -> create SHL -> verify SHLink URL format, JWE in S3
 
 ### Step 8: SHL Retrieval (Public Endpoint)
-- ShlRetrievalService, ShlHandler, ShlRouter
+- ShlRetrievalService, ShlController (public GET)
 - **Verify**: E2E: create SHL -> GET /shl/{id}?recipient=Test -> decrypt -> verify FHIR JSON
 
 ### Step 9: Audit Viewing
-- AuditController + wire into ShlManagementController
+- AuditController + SHL-specific audit endpoints
 - **Verify**: After SHL access, patient sees audit trail
 
 ### Step 10: GraphQL Layer
-- schema.graphqls + GraphQL controllers + type mappings
-- **Verify**: GraphQL queries return FHIR data from HealthLake
+- schema.graphqls + GraphQL controllers (@BatchMapping) + type mappings
+- GraphQL instrumentation beans (MaxQueryComplexity, MaxQueryDepth)
+- **Verify**: GraphQL queries return FHIR data from HealthLake, pagination works
 
-### Step 11: Integration Tests + Phase 2 Stubs
-- Full E2E flow tests, error cases, security boundary tests
+### Step 11: Rate Limiting + Observability
+- Bucket4j rate limiting on public SHL endpoints
+- OTLP configuration + @Observed on key operations
+- **Verify**: Rate limits enforced, metrics exported
+
+### Step 12: Integration Tests + Phase 2 Stubs
+- Full E2E flow tests with Testcontainers 2.0.3 (testcontainers-mongodb)
+- Error cases, security boundary tests
 - Phase 2 POST endpoint returns 501, Phase 2 DTOs defined
+- **Verify**: All tests pass, @ServiceConnection works
 
 ---
 
 ## Verification Plan
 
-1. **Unit tests**: Crypto round-trip, FHIR bundle construction, base64url encoding
-2. **Integration tests**: MongoDB CRUD, S3 upload/download, HealthLake FHIR API
+1. **Unit tests**: Crypto round-trip, FHIR bundle construction (Jackson 2 path), base64url encoding
+2. **Integration tests**: MongoDB CRUD (imperative), S3 upload/download, HealthLake FHIR API
 3. **E2E test**: Upload health data -> create SHL -> GET /shl/{id} -> decrypt -> verify FHIR
 4. **Security test**: /shl/** public, /api/** requires OAuth2, /graphql requires auth
 5. **Audit test**: Every action produces audit log entry in MongoDB
-6. **GraphQL test**: Query patient/document data from HealthLake
+6. **GraphQL test**: @GraphQlTest slice tests, @BatchMapping N+1 prevention, pagination
+7. **Virtual thread test**: Verify no carrier thread pinning (`-Djdk.tracePinnedThreads=full`)
+8. **Rate limit test**: Bucket4j enforces limits on SHL retrieval endpoint
