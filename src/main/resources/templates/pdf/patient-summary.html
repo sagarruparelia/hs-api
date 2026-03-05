@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <title>Patient Health Summary</title>
+    <style>
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 12px;
+            margin: 20px;
+            color: #333;
+        }
+        h1 {
+            color: #1a5276;
+            font-size: 18px;
+            border-bottom: 2px solid #1a5276;
+            padding-bottom: 5px;
+        }
+        h2 {
+            color: #2c3e50;
+            font-size: 14px;
+            margin-top: 15px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .patient-info {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 6px 8px;
+            text-align: left;
+            font-size: 11px;
+        }
+        th {
+            background-color: #1a5276;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+        .footer {
+            margin-top: 30px;
+            font-size: 10px;
+            color: #777;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Patient Health Summary</h1>
+    </div>
+    <div class="patient-info">
+        <p><strong>Patient:</strong> <span th:text="${patientName}">Patient Name</span></p>
+        <p><strong>Generated:</strong> <span th:text="${#temporals.format(#temporals.createNow(), 'MMMM d, yyyy')}">Date</span></p>
+    </div>
+    <div class="footer">
+        <p>This document was generated automatically as part of a Patient Shared Health Document (PSHD).</p>
+        <p>For questions about this document, contact your healthcare provider.</p>
+    </div>
+</body>
+</html>

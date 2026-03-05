@@ -1,0 +1,147 @@
+type Query {
+    medications(enterpriseId: String!, startDate: String, endDate: String, sortOrder: SortOrder): [Medication!]!
+    immunizations(enterpriseId: String!, startDate: String, endDate: String, sortOrder: SortOrder): [Immunization!]!
+    allergies(enterpriseId: String!, startDate: String, endDate: String, sortOrder: SortOrder): [Allergy!]!
+    conditions(enterpriseId: String!, startDate: String, endDate: String, sortOrder: SortOrder): [Condition!]!
+    procedures(enterpriseId: String!, startDate: String, endDate: String, sortOrder: SortOrder): [Procedure!]!
+    labResults(enterpriseId: String!, startDate: String, endDate: String, sortOrder: SortOrder): [LabResult!]!
+    coverages(enterpriseId: String!, startDate: String, endDate: String, sortOrder: SortOrder): [Coverage!]!
+    claims(enterpriseId: String!, startDate: String, endDate: String, sortOrder: SortOrder): [Claim!]!
+    appointments(enterpriseId: String!, startDate: String, endDate: String, sortOrder: SortOrder): [Appointment!]!
+    careTeams(enterpriseId: String!, startDate: String, endDate: String, sortOrder: SortOrder): [CareTeam!]!
+    patientSummary(enterpriseId: String!): PatientSummary
+    resourceCounts(enterpriseId: String!): ResourceCounts!
+    healthDashboard(enterpriseId: String!): HealthDashboard!
+}
+
+enum SortOrder {
+    ASC
+    DESC
+}
+
+type Medication {
+    id: String
+    name: String
+    status: String
+    dosage: String
+    reason: String
+    startDate: String
+    endDate: String
+}
+
+type Immunization {
+    id: String
+    name: String
+    status: String
+    date: String
+    site: String
+    performer: String
+}
+
+type Allergy {
+    id: String
+    substance: String
+    category: String
+    criticality: String
+    status: String
+    recordedDate: String
+    reaction: String
+}
+
+type Condition {
+    id: String
+    name: String
+    status: String
+    category: String
+    onsetDate: String
+    abatementDate: String
+}
+
+type Procedure {
+    id: String
+    name: String
+    status: String
+    performedDate: String
+    performer: String
+    location: String
+}
+
+type LabResult {
+    id: String
+    name: String
+    value: String
+    unit: String
+    status: String
+    effectiveDate: String
+    referenceRange: String
+    interpretation: String
+}
+
+type Coverage {
+    id: String
+    type: String
+    status: String
+    payor: String
+    subscriberId: String
+    startDate: String
+    endDate: String
+}
+
+type Claim {
+    id: String
+    type: String
+    status: String
+    provider: String
+    serviceDate: String
+    totalAmount: String
+    currency: String
+}
+
+type Appointment {
+    id: String
+    status: String
+    type: String
+    description: String
+    date: String
+    participant: String
+    location: String
+}
+
+type CareTeam {
+    id: String
+    name: String
+    status: String
+    category: String
+    participants: [String]
+    startDate: String
+}
+
+type PatientSummary {
+    id: String
+    firstName: String
+    lastName: String
+    birthDate: String
+    gender: String
+    address: String
+    phone: String
+    email: String
+}
+
+type ResourceCounts {
+    medications: Int!
+    immunizations: Int!
+    allergies: Int!
+    conditions: Int!
+    procedures: Int!
+    labResults: Int!
+    coverages: Int!
+    claims: Int!
+    appointments: Int!
+    careTeams: Int!
+    total: Int!
+}
+
+type HealthDashboard {
+    resourceCounts: ResourceCounts!
+    patientSummary: PatientSummary
+}
