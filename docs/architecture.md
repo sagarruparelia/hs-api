@@ -37,7 +37,7 @@ Every code path involves blocking (HAPI FHIR, JCE, HealthLake REST, MongoDB, S3)
 
 - `spring.threads.virtual.enabled=true` with `spring-boot-starter-webmvc`
 - `spring-boot-starter-data-mongodb` (imperative `MongoRepository`)
-- `RestClient` for HealthLake (not `WebClient`)
+- `RestClient` + SigV4 for HealthLake (not `WebClient`); AWS default credential chain works in all environments (AWS CLI locally, IAM role in EKS)
 - MongoDB driver 5.6.x is virtual-thread-safe
 - Parallel fan-out via `CompletableFuture` (StructuredTaskScope still preview in Java 25)
 
@@ -68,14 +68,13 @@ Each operation has its own URL. All secured endpoints use POST with IDs in the r
 
 **Rationale:** Separate URLs per operation are self-documenting and produce clean OpenAPI specs. POST-only avoids sensitive IDs in URLs/access logs. `/secure/api` prefix makes auth boundaries explicit.
 
-### 2. Encryption Key Storage — Envelope Encryption
-- Per-link 32-byte AES keys are wrapped (AES-KW) using a master key before MongoDB storage
-- Master key loaded from env var `SHL_MASTER_KEY_v{N}` (populated via AWS EKS secret), where N is the key version
-- `MasterKeyService` interface with `EnvMasterKeyService` implementation
-- `keyVersion` field on `ShlLinkDocument` enables key rotation without invalidating existing links
-- Wrap new keys with current version; unwrap with the version stored on the document
-- Future: `KmsMasterKeyService` for AWS KMS without code changes
-- Raw key goes into shlink URI; wrapped key stored in MongoDB `encryptionKey` field
+### 2. Encryption Key Storage — Application-Level Encryption
+- Per-link 32-byte AES keys are encrypted with a single `ENCRYPTION_KEY` env var (AES-GCM) before MongoDB storage
+- `ENCRYPTION_KEY` loaded from env var (populated via AWS EKS secret)
+- Simple encrypt-on-write, decrypt-on-read — no key rotation, no versioning
+- Defense-in-depth: DB breach alone doesn't expose keys (need both MongoDB + `ENCRYPTION_KEY`)
+- Raw key goes into shlink URI; encrypted key stored in MongoDB `encryptionKey` field
+- SHL links are short-lived (5 min to 30 days) — rotation complexity not justified for v1
 
 ### 3. PDF Generation — OpenHTMLtoPDF + Thymeleaf
 - `com.openhtmltopdf:openhtmltopdf-pdfbox:1.1.22` (Apache 2.0 license)
@@ -94,7 +93,7 @@ com.chanakya.hsapi/
   config/
     SecurityConfig.java           # SecurityFilterChain: public /shl/**, require X-Consumer-Id on /secure/api/**
     MongoConfig.java              # Programmatic indexes for all collections
-    AwsConfig.java                # S3Client + Apache5HttpClient
+    AwsConfig.java                # S3Client + HealthLake SigV4 + Apache5HttpClient (default credential chain)
     GraphQlConfig.java            # Instrumentation beans (complexity, depth limits)
     JacksonConfig.java            # Jackson 3 customization (HAPI FHIR uses Jackson 2 transitively, no config needed)
     WebMvcConfig.java             # CORS, security headers
@@ -118,7 +117,7 @@ com.chanakya.hsapi/
       FhirResourceType.java       # Enum: MEDICATION, IMMUNIZATION, ALLERGY, etc.
     dto/
       ShlSearchRequest.java       # Record: idType, idValue, hsid_uuid?
-      ShlCreateRequest.java       # Record: idType, idValue, label, expiresAt, selectedResources, includePdf, patientName
+      ShlCreateRequest.java       # Record: idType, idValue, label, expiresAt (ISO 8601, 5min–365d), selectedResources, includePdf, patientName
       ShlRevokeRequest.java       # Record: idType, idValue, hsid_uuid
       ShlLinkResponse.java        # Record: link detail with effectiveStatus, shlinkUrl, qrData
       ShlCreateResponse.java      # Record: hsid_uuid, shlinkUrl, qrData, expiresAt
@@ -136,14 +135,10 @@ com.chanakya.hsapi/
   crypto/
     EncryptionService.java        # JWE encrypt/decrypt (Nimbus JOSE: dir, A256GCM)
     KeyGenerationService.java     # 32-byte AES key gen + base64url
-    MasterKeyService.java         # Interface: wrapKey(raw) → encrypted, unwrapKey(encrypted) → raw
-    EnvMasterKeyService.java      # AES-KW using env var SHL_MASTER_KEY_v{N} (EKS secret, versioned)
-    # Future: KmsMasterKeyService.java (AWS KMS GenerateDataKey/Decrypt)
+    FieldEncryptionService.java   # AES-GCM encrypt/decrypt for MongoDB field-level encryption using ENCRYPTION_KEY
 
   fhir/
-    FhirClient.java               # Interface: search by resource type, get patient
-    LocalFhirClient.java          # @Profile("dev"): RestClient → local HAPI FHIR
-    HealthLakeFhirClient.java     # @Profile("!dev"): RestClient + SigV4
+    FhirClient.java               # HealthLake client: RestClient + SigV4 (AWS CLI creds locally, IAM role in EKS)
     SigV4RequestInterceptor.java  # ClientHttpRequestInterceptor for HealthLake
     FhirBundleBuilder.java        # Build PatientSharedBundle (see PSHD Bundle Requirements below)
     FhirSerializationService.java # FhirContext.forR4() singleton, Jackson 2
@@ -225,12 +220,11 @@ public class ShlLinkDocument {
     private String label;                           // Max 80 chars
     private ShlMode mode;                           // SNAPSHOT | LIVE
     private String flag;                            // "U" (snapshot) or "L" (live). Phase 2: "LP" — alphabetically concatenated
-    private String encryptionKey;                   // Wrapped AES key (base64url)
-    private int keyVersion;                         // Master key version used for wrapping (default: 1)
+    private String encryptionKey;                   // AES-GCM encrypted with ENCRYPTION_KEY (base64url)
     private List<FhirResourceType> selectedResources;
     private boolean includePdf;
     private String patientName;
-    private Instant expiresAt;                      // REQUIRED per PSHD spec (5-15 min in-person, 24-48 hrs appointments)
+    private Instant expiresAt;                      // REQUIRED — ISO 8601 format, min 5 minutes, max 365 days from creation
     private ShlStatus status;                       // ACTIVE | REVOKED
     private String s3Key;                           // Snapshot only: "shl/{eid}/{id}.jwe"
     private Instant createdAt;
@@ -384,15 +378,15 @@ GET /health  →  Health check (no auth)
 
 ### Flow 2: SHL Create (Snapshot, U flag)
 ```
-1. Validate X-Consumer-Id + request body (expiresAt REQUIRED, return 400 if missing)
+1. Validate X-Consumer-Id + request body (expiresAt REQUIRED, ISO 8601 format, min 5 min / max 365 days from now — return 400 if missing or out of range)
 2. Generate link ID: 32-byte SecureRandom → base64url (43 chars, 256-bit entropy)
 3. PatientCrosswalkService looks up healthLakePatientId (1:1)
-4. Generate 32-byte AES key → MasterKeyService.wrapKey(keyVersion=current) → encrypted key
+4. Generate 32-byte AES key → FieldEncryptionService.encrypt(ENCRYPTION_KEY) → encrypted key
 5. FhirBundleBuilder: fetch selectedResources from HealthLake → build PatientSharedBundle
 6. Optional: PdfGenerationService (OpenHTMLtoPDF + Thymeleaf) → DocumentReference entry
 7. Encrypt Bundle → JWE (dir, A256GCM) using raw AES key
 8. Upload JWE to S3: shl/{enterpriseId}/{linkId}.jwe
-9. Insert ShlLinkDocument to shl_links (encryptionKey = wrapped, keyVersion, flag = "U")
+9. Insert ShlLinkDocument to shl_links (encryptionKey = encrypted, flag = "U")
 10. Build shlink URI (raw key in URI, NOT the wrapped key)
 11. Audit: LINK_CREATED to shl_audit_log
 12. Return linkId, shlinkUrl, qrData, expiresAt
@@ -580,7 +574,7 @@ Bundle (type: collection, timestamp: required)
 
 ### Step 0: Update Documentation
 - Rewrite `docs/architecture.md` with updated architecture
-- Add `docker-compose.yaml` (MongoDB + HAPI FHIR server)
+- Add `docker-compose.yaml` (MongoDB only — HealthLake accessed via AWS CLI creds)
 - Install fhir-developer + aws-skills Claude Code skills
 
 ### Step 1: Project Foundation
@@ -595,8 +589,8 @@ Bundle (type: collection, timestamp: required)
 - `auth/RequestContext.java` — ScopedValue
 - `common/filter/SecurityHeadersFilter.java`
 - `common/filter/RequestIdFilter.java`
-- `docker-compose.yaml` — MongoDB + HAPI FHIR
-- **Verify**: App starts with `dev` profile, connects to MongoDB, health check returns 200
+- `docker-compose.yaml` — MongoDB only (HealthLake accessed via AWS CLI creds in all environments)
+- **Verify**: App starts, connects to MongoDB, health check returns 200
 
 ### Step 2: Common Infrastructure
 - `common/exception/GlobalExceptionHandler.java`
@@ -613,19 +607,16 @@ Bundle (type: collection, timestamp: required)
 ### Step 4: Crypto Module
 - `crypto/KeyGenerationService.java` — 32-byte key gen
 - `crypto/EncryptionService.java` — JWE encrypt/decrypt (dir, A256GCM)
-- `crypto/MasterKeyService.java` — Interface: wrapKey/unwrapKey
-- `crypto/EnvMasterKeyService.java` — AES-KW with env var `SHL_MASTER_KEY`
+- `crypto/FieldEncryptionService.java` — AES-GCM encrypt/decrypt using `ENCRYPTION_KEY` env var
 - `config/CryptoConfig.java` — Bean wiring
-- **Verify**: Generate key → wrap → unwrap → encrypt → decrypt round-trip
+- **Verify**: Generate key → field-encrypt → field-decrypt → JWE encrypt → JWE decrypt round-trip
 
 ### Step 5: S3 + FHIR Client
 - `storage/S3PayloadService.java`
-- `fhir/FhirClient.java` interface
-- `fhir/LocalFhirClient.java` (@Profile "dev")
-- `fhir/HealthLakeFhirClient.java` (@Profile "!dev")
+- `fhir/FhirClient.java` — single implementation, SigV4 auth via default credential chain (AWS CLI locally, IAM role in EKS)
 - `fhir/SigV4RequestInterceptor.java`
 - `fhir/FhirSerializationService.java`
-- **Verify**: S3 round-trip, FHIR client fetches from local HAPI FHIR
+- **Verify**: S3 round-trip, FHIR client fetches from HealthLake (use `aws sso login` locally)
 
 ### Step 6: FHIR Transforms + Bundle Builder
 - `graphql/transform/*.java` — 11 transforms (10 clinical + patient demographics)
@@ -688,13 +679,14 @@ Bundle (type: collection, timestamp: required)
 
 | # | Test | Step |
 |---|------|------|
-| 1 | Crypto round-trip (key gen → wrap → unwrap → encrypt → decrypt) | 4 |
-| 2 | Crypto key rotation (wrap with v1, unwrap with v1 after v2 becomes current) | 4 |
+| 1 | Crypto round-trip (key gen → field-encrypt → field-decrypt → JWE encrypt → JWE decrypt) | 4 |
+| 2 | Field encryption: encrypted key in MongoDB is not plaintext, decrypts back to original | 4 |
 | 3 | FHIR transforms match Node.js compact output shapes | 6 |
 | 4 | PSHD Bundle structure: Patient + DocumentReference (LOINC 60591-5) + discrete resources | 6 |
 | 5 | Crosswalk: enterpriseId → healthLakePatientId (1:1) | 3 |
 | 6 | SHL create (snapshot, U flag): JWE in S3, link in MongoDB, audit logged | 8-9 |
 | 7 | SHL create rejects missing expiresAt with 400 | 8-9 |
+| 7b | SHL create rejects expiresAt < 5 min or > 365 days from now with 400 | 8-9 |
 | 8 | Link ID has 256-bit entropy (32-byte SecureRandom, base64url, 43 chars) | 8 |
 | 9 | SHL snapshot retrieval: GET with recipient → JWE → decrypt → valid FHIR | 10 |
 | 10 | SHL retrieval rejects missing/empty recipient with 400 | 10 |
