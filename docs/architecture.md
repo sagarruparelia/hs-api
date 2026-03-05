@@ -4,7 +4,7 @@
 
 Build `hs-api` — a Spring Boot 4.0.3 + Java 25 backend exposing:
 1. **FHIR GraphQL API** — 10 clinical resource types with compact transforms for server-to-server consumers
-2. **SHL REST API** — CRUD + public HL7 SHL protocol (snapshot + live modes)
+2. **SHL REST API** — CRUD + public HL7 SHL protocol (v1: snapshot with U flag; Phase 2: live mode + manifest)
 3. **Data layer** — MongoDB, S3, HealthLake (owned by Spring Boot)
 
 **Reference**: The existing Node.js implementation (hs-web-poc) serves as design inspiration. Spring Boot owns the API contract and data schema. The Next.js frontend will consume Spring Boot APIs.
@@ -25,7 +25,7 @@ Build `hs-api` — a Spring Boot 4.0.3 + Java 25 backend exposing:
 | **FHIR data store** | AWS HealthLake (FHIR R4 v4.0.1 only) | Authoritative store for all FHIR resources |
 | **Transactional DB** | MongoDB (imperative + virtual threads) | SHL metadata, audit logs, patient crosswalk |
 | **SHL payload storage** | AWS S3 | Encrypted JWE blobs (snapshot mode payloads) |
-| **GraphQL** | Spring for GraphQL 2.0 (WebMVC transport) | 12 resource type queries over HealthLake |
+| **GraphQL** | Spring for GraphQL 2.0 (WebMVC transport) | 10 resource type queries over HealthLake |
 | **Web framework** | Spring WebMVC + Virtual Threads | REST + GraphQL endpoints |
 | **Auth** | X-Consumer-Id header from OAuth2 proxy | Spring Boot trusts proxy, no token validation |
 | **PDF generation** | OpenHTMLtoPDF + Thymeleaf | Accessible PDF/UA with proprietary fonts |
@@ -54,22 +54,26 @@ Consumer → OAuth2 Proxy (client credentials) → ALB (mTLS) → Spring Boot (t
 ```
 
 - Spring Boot does NOT validate OAuth2 tokens
-- `X-Consumer-Id` header required on all `/api/**` endpoints → 401 if missing
+- `X-Consumer-Id` header required on all `/secure/api/**` endpoints → 401 if missing
 - Public SHL endpoints (`/shl/{id}`) require NO auth (HL7 protocol)
-- `enterpriseId` in query params/body scopes all data queries
+- `idType` + `idValue` in request body scopes all data queries (no IDs in URLs)
 - `consumerId` + `source: "external"` written to audit logs
 
 ---
 
 ## Architecture Decisions (Confirmed)
 
-### 1. Action-Based API Style
-POST for reads (list, get, preview, counts), PATCH for mutations (create, revoke). GET used only for public `/shl/{id}` protocol endpoints. No DELETE verb.
+### 1. REST-Style POST Endpoints (No GET for Secured APIs)
+Each operation has its own URL. All secured endpoints use POST with IDs in the request body (never in the URL). GET is reserved for the public SHL protocol endpoint only (per HL7 spec).
+
+**Rationale:** Separate URLs per operation are self-documenting and produce clean OpenAPI specs. POST-only avoids sensitive IDs in URLs/access logs. `/secure/api` prefix makes auth boundaries explicit.
 
 ### 2. Encryption Key Storage — Envelope Encryption
 - Per-link 32-byte AES keys are wrapped (AES-KW) using a master key before MongoDB storage
-- Master key loaded from env var `SHL_MASTER_KEY` (populated via AWS EKS secret)
+- Master key loaded from env var `SHL_MASTER_KEY_v{N}` (populated via AWS EKS secret), where N is the key version
 - `MasterKeyService` interface with `EnvMasterKeyService` implementation
+- `keyVersion` field on `ShlLinkDocument` enables key rotation without invalidating existing links
+- Wrap new keys with current version; unwrap with the version stored on the document
 - Future: `KmsMasterKeyService` for AWS KMS without code changes
 - Raw key goes into shlink URI; wrapped key stored in MongoDB `encryptionKey` field
 
@@ -88,7 +92,7 @@ com.chanakya.hsapi/
   HsApiApplication.java
 
   config/
-    SecurityConfig.java           # SecurityFilterChain: public /shl/**, require X-Consumer-Id on /api/**
+    SecurityConfig.java           # SecurityFilterChain: public /shl/**, require X-Consumer-Id on /secure/api/**
     MongoConfig.java              # Programmatic indexes for all collections
     AwsConfig.java                # S3Client + Apache5HttpClient
     GraphQlConfig.java            # Instrumentation beans (complexity, depth limits)
@@ -101,28 +105,30 @@ com.chanakya.hsapi/
     RequestContext.java           # ScopedValue: consumerId, source, requestId, enterpriseId
 
   shl/
-    ShlApiController.java         # POST /api/v1/shl (list, get, preview, counts)
-    ShlMutationController.java    # PATCH /api/v1/shl (create, revoke)
-    ShlPublicController.java      # GET /shl/{id}, POST /shl/{id}, OPTIONS /shl/{id}
+    ShlController.java            # POST /secure/api/v1/shl/* (search, get, preview, counts, history, create, revoke)
+    ShlPublicController.java      # GET /shl/{id}?recipient={org}, OPTIONS /shl/{id} (v1: snapshot U-flag only)
     model/
       ShlLinkDocument.java        # @Document("shl_links")
       ShlAuditLogDocument.java    # @Document("shl_audit_log")
-      ShlMode.java                # Enum: SNAPSHOT, LIVE
+      ShlMode.java                # Enum: SNAPSHOT (v1) | LIVE (Phase 2)
       ShlStatus.java              # Enum: ACTIVE, REVOKED
-      ShlFlag.java                # Enum: U (single-use), L (long-term), P (passcode) — protocol flags for shlink URI
+      ShlFlag.java                # Enum: U (direct-file) — Phase 2 adds L (long-term), P (passcode)
+      AccessRecord.java           # Record: recipient, action, timestamp — embedded in ShlLinkDocument
       ShlAuditAction.java         # Enum: LINK_CREATED, LINK_VIEWED, LINK_REVOKED, LINK_ACCESSED, LINK_ACCESS_EXPIRED, LINK_ACCESS_REVOKED, LINK_DENIED
       FhirResourceType.java       # Enum: MEDICATION, IMMUNIZATION, ALLERGY, etc.
     dto/
-      ShlActionRequest.java       # Record: action, enterpriseId, linkId? (POST reads)
-      ShlMutationRequest.java     # Record: action, enterpriseId, linkId?, label?, mode?, selectedResources?, etc. (PATCH mutations)
+      ShlSearchRequest.java       # Record: idType, idValue, hsid_uuid?
+      ShlCreateRequest.java       # Record: idType, idValue, label, expiresAt, selectedResources, includePdf, patientName
+      ShlRevokeRequest.java       # Record: idType, idValue, hsid_uuid
       ShlLinkResponse.java        # Record: link detail with effectiveStatus, shlinkUrl, qrData
-      ShlCreateResponse.java      # Record: linkId, shlinkUrl, qrData, expiresAt
+      ShlCreateResponse.java      # Record: hsid_uuid, shlinkUrl, qrData, expiresAt
       ShlCountsResponse.java      # Record: per-resource-type counts
-      ManifestResponse.java       # Record: status, files[] (live mode)
+      ShlAccessHistoryResponse.java # Record: hsid_uuid, history[] — reads from shl_links.accessHistory (single doc read)
+      # Phase 2: ManifestResponse.java — Record: status, list?, files[] (manifest POST for live/non-U links)
     service/
-      ShlService.java             # Create, list, get, preview, counts, revoke
-      ShlRetrievalService.java    # Public snapshot GET + live POST
-      ShlinkBuilder.java          # Build shlink:/ URIs
+      ShlService.java             # Create, search, get, preview, counts, revoke, history
+      ShlRetrievalService.java    # Public snapshot GET retrieval (v1); Phase 2: manifest POST
+      ShlinkBuilder.java          # Build shlink:/ URIs (link ID: 32-byte SecureRandom, base64url)
     repository/
       ShlLinkRepository.java      # MongoRepository for shl_links
       ShlAuditLogRepository.java  # MongoRepository for shl_audit_log
@@ -131,7 +137,7 @@ com.chanakya.hsapi/
     EncryptionService.java        # JWE encrypt/decrypt (Nimbus JOSE: dir, A256GCM)
     KeyGenerationService.java     # 32-byte AES key gen + base64url
     MasterKeyService.java         # Interface: wrapKey(raw) → encrypted, unwrapKey(encrypted) → raw
-    EnvMasterKeyService.java      # AES-KW using env var SHL_MASTER_KEY (EKS secret)
+    EnvMasterKeyService.java      # AES-KW using env var SHL_MASTER_KEY_v{N} (EKS secret, versioned)
     # Future: KmsMasterKeyService.java (AWS KMS GenerateDataKey/Decrypt)
 
   fhir/
@@ -139,7 +145,7 @@ com.chanakya.hsapi/
     LocalFhirClient.java          # @Profile("dev"): RestClient → local HAPI FHIR
     HealthLakeFhirClient.java     # @Profile("!dev"): RestClient + SigV4
     SigV4RequestInterceptor.java  # ClientHttpRequestInterceptor for HealthLake
-    FhirBundleBuilder.java        # Build CMS PatientSharedBundle from selected resources
+    FhirBundleBuilder.java        # Build PatientSharedBundle (see PSHD Bundle Requirements below)
     FhirSerializationService.java # FhirContext.forR4() singleton, Jackson 2
 
   graphql/
@@ -212,20 +218,42 @@ com.chanakya.hsapi/
 ```java
 @Document("shl_links")
 public class ShlLinkDocument {
-    @Id private String id;
+    @Id private String id;                           // 32-byte SecureRandom, base64url (256-bit entropy, 43 chars)
     private String enterpriseId;                    // iMDM member ID, indexed
     private String label;                           // Max 80 chars
-    private ShlMode mode;                           // SNAPSHOT | LIVE
+    private ShlMode mode;                           // SNAPSHOT (v1) | LIVE (Phase 2)
+    private String flag;                            // "U" (v1). Phase 2: "L", "LP" — alphabetically concatenated
     private String encryptionKey;                   // Wrapped AES key (base64url)
+    private int keyVersion;                         // Master key version used for wrapping (default: 1)
     private List<FhirResourceType> selectedResources;
     private boolean includePdf;
     private String patientName;
-    private Instant expiresAt;
+    private Instant expiresAt;                      // REQUIRED per PSHD spec (5-15 min in-person, 24-48 hrs appointments)
     private ShlStatus status;                       // ACTIVE | REVOKED
     private String s3Key;                           // Snapshot only: "shl/{eid}/{id}.jwe"
     private Instant createdAt;
+    private List<AccessRecord> accessHistory;       // Embedded compact access log (operational)
     // Computed: effectiveStatus (ACTIVE + past expiry → EXPIRED)
+    // Phase 2 fields: passcodeHash, maxAttempts, failedAttempts
 }
+
+// Embedded in ShlLinkDocument — compact, patient/admin-facing
+record AccessRecord(
+    String recipient,                               // "Dr. Smith's Office"
+    String action,                                  // ACCESSED | DENIED | ACCESS_EXPIRED | ACCESS_REVOKED
+    Instant timestamp
+) {}
+```
+
+**Two access log stores, two purposes:**
+
+| Store | Purpose | Audience | Contents |
+|-------|---------|----------|----------|
+| `shl_links.accessHistory[]` | Operational — "who accessed my link?" | Patient/admin via `/history` | Compact: recipient, action, timestamp |
+| `shl_audit_log` | Compliance — system-wide forensic trail | Security/audit team | Full: IP, UA, contentHash, requestId, consumerId |
+
+- v1 (U flag, short-lived links): access count per link is low (1-5), no growth concern
+- Phase 2 (L flag, long-term): cap embedded list at 50 entries; older entries remain in `shl_audit_log`
 ```
 
 Indexes: `{enterpriseId, status}`, `{expiresAt}`
@@ -291,27 +319,46 @@ public class AuditLogDocument {
 
 ### FHIR GraphQL (Authenticated)
 ```
-POST /api/v1/graphql
+POST /secure/api/v1/graphql
 X-Consumer-Id: <consumer-id>
 ```
 10 queries + resourceCounts + healthDashboard
 
-### SHL CRUD (Authenticated)
+### SHL Secured Endpoints (Authenticated — all POST, IDs in body)
 ```
-POST  /api/v1/shl   →  action: list | get | preview | counts | accessHistory   (reads)
-PATCH /api/v1/shl   →  action: create | revoke                                (mutations)
+POST /secure/api/v1/shl/search    →  List links for an enterprise ID
+POST /secure/api/v1/shl/get       →  Get single link detail
+POST /secure/api/v1/shl/preview   →  Preview link content
+POST /secure/api/v1/shl/counts    →  Resource type counts for a link
+POST /secure/api/v1/shl/history   →  Access history (who accessed, allowed/denied)
+POST /secure/api/v1/shl/create    →  Create new SHL link
+POST /secure/api/v1/shl/revoke    →  Revoke an existing link
 ```
+
+**Common request body pattern:**
+```json
+{
+  "idType": "EID",
+  "idValue": "actual-enterprise-id",
+  "hsid_uuid": "link-id-if-needed"
+}
+```
+- `idType` + `idValue`: primary lookup key (EID = enterprise ID from iMDM)
+- `hsid_uuid`: link ID — required for get/preview/counts/history/revoke, absent for search/create
 
 ### SHL Public (No Auth — HL7 Protocol)
 ```
-GET     /shl/{id}?recipient={org}   →  Snapshot retrieval (flag "U")
-POST    /shl/{id}                   →  Live manifest retrieval (flag "L")
+GET     /shl/{id}?recipient={org}   →  Direct file retrieval (U flag — returns JWE, Content-Type: application/jose)
 OPTIONS /shl/{id}                   →  CORS preflight
+```
+**Phase 2:**
+```
+POST    /shl/{id}                   →  Manifest retrieval (non-U-flag links: snapshot w/o U, live mode)
 ```
 
 ### Infrastructure
 ```
-GET /api/health  →  Health check (no auth)
+GET /health  →  Health check (no auth)
 ```
 
 ---
@@ -337,53 +384,55 @@ GET /api/health  →  Health check (no auth)
 - Each resource type has a canonical date field (e.g., MedicationRequest.authoredOn, Immunization.occurrenceDateTime)
 ```
 
-### Flow 2: SHL Create (Snapshot)
+### Flow 2: SHL Create (Snapshot, U flag)
 ```
-1. Validate X-Consumer-Id + request body
-2. PatientCrosswalkService looks up List<healthLakePatientId>
-3. Generate 32-byte AES key → MasterKeyService.wrapKey() → encrypted key
-4. FhirBundleBuilder: fetch selectedResources from HealthLake → build Bundle
-5. Optional: PdfGenerationService (OpenHTMLtoPDF + Thymeleaf) → DocumentReference entry
-6. Encrypt Bundle → JWE (dir, A256GCM) using raw AES key
-7. Upload JWE to S3: shl/{enterpriseId}/{linkId}.jwe
-8. Insert ShlLinkDocument to shl_links (encryptionKey = wrapped/encrypted)
-9. Build shlink URI (raw key in URI, NOT the wrapped key)
-10. Audit: link_created to shl_audit_log
-11. Return linkId, shlinkUrl, qrData, expiresAt
-```
-
-### Flow 3: SHL Create (Live)
-```
-Same as snapshot EXCEPT steps 4-7 skipped (no bundle built, no S3 upload).
-s3Key is null. Bundle built on-demand at retrieval time.
+1. Validate X-Consumer-Id + request body (expiresAt REQUIRED, return 400 if missing)
+2. Generate link ID: 32-byte SecureRandom → base64url (43 chars, 256-bit entropy)
+3. PatientCrosswalkService looks up List<healthLakePatientId>
+4. Generate 32-byte AES key → MasterKeyService.wrapKey(keyVersion=current) → encrypted key
+5. FhirBundleBuilder: fetch selectedResources from HealthLake → build PatientSharedBundle
+6. Optional: PdfGenerationService (OpenHTMLtoPDF + Thymeleaf) → DocumentReference entry
+7. Encrypt Bundle → JWE (dir, A256GCM) using raw AES key
+8. Upload JWE to S3: shl/{enterpriseId}/{linkId}.jwe
+9. Insert ShlLinkDocument to shl_links (encryptionKey = wrapped, keyVersion, flag = "U")
+10. Build shlink URI (raw key in URI, NOT the wrapped key)
+11. Audit: LINK_CREATED to shl_audit_log
+12. Return linkId, shlinkUrl, qrData, expiresAt
 ```
 
-### Flow 4: SHL Snapshot Retrieval (GET /shl/{id})
+### Flow 3: SHL Direct File Retrieval (GET /shl/{id} — U flag)
 ```
-1. Validate recipient query param
-2. Find link in shl_links (not found → audit LINK_DENIED + 404)
+1. Validate recipient query param (required per spec; return 400 if missing/empty)
+2. Find link in shl_links (not found → audit LINK_DENIED to shl_audit_log + 404)
 3. Check status:
-   - revoked → audit LINK_ACCESS_REVOKED (recipient, IP, UA) → 404
-   - expired → audit LINK_ACCESS_EXPIRED (recipient, IP, UA) → 404
-   - live mode → 405 (Allow: POST)
+   - revoked → push AccessRecord(recipient, ACCESS_REVOKED, now) to shl_links.accessHistory
+              → write full audit to shl_audit_log (recipient, IP, UA) → 404
+   - expired → push AccessRecord(recipient, ACCESS_EXPIRED, now) to shl_links.accessHistory
+              → write full audit to shl_audit_log (recipient, IP, UA) → 404
 4. Download JWE from S3
-5. Audit: LINK_ACCESSED with contentHash (SHA-256 of JWE), recipient, IP, UA
+5. Push AccessRecord(recipient, ACCESSED, now) to shl_links.accessHistory
+   Write full audit to shl_audit_log (contentHash, recipient, IP, UA)
 6. Return JWE string, Content-Type: application/jose
 ```
 
-### Flow 5: SHL Live Retrieval (POST /shl/{id})
+### Phase 2 Flows (Not in v1)
+
+**Flow 4: SHL Create (Live mode)**
 ```
-1. Parse JSON body, validate recipient
+Same as Flow 2 EXCEPT steps 5-8 skipped (no bundle built, no S3 upload).
+s3Key is null. flag = "L". Bundle built on-demand at retrieval time.
+```
+
+**Flow 5: SHL Manifest Retrieval (POST /shl/{id} — non-U-flag links)**
+```
+1. Parse JSON body: { recipient (required), passcode? (Phase 2+), embeddedLengthMax? }
 2. Find link in shl_links (not found → audit LINK_DENIED + 404)
 3. Check status:
-   - revoked → audit LINK_ACCESS_REVOKED (recipient, IP, UA) → 404
-   - expired → audit LINK_ACCESS_EXPIRED (recipient, IP, UA) → 404
-   - snapshot mode → 405 (Allow: GET)
-4. MasterKeyService.unwrapKey(encryptionKey) → raw AES key
-5. Build fresh Bundle from HealthLake using selectedResources + patientName
-6. Encrypt with raw AES key → JWE
-7. Audit: link_accessed
-8. Return manifest: { status: "can-change", files: [{ contentType, embedded: JWE, lastUpdated }] }
+   - revoked/expired → return manifest { status: "no-longer-valid", files: [] }
+4. For live mode: build fresh Bundle, encrypt → JWE
+   For snapshot w/o U flag: download JWE from S3
+5. Audit: LINK_ACCESSED
+6. Return manifest: { status: "finalized"|"can-change", files: [{ contentType, embedded: JWE, lastUpdated }] }
 ```
 
 ### Flow 6: resourceCounts (Parallel)
@@ -400,8 +449,8 @@ s3Key is null. Bundle built on-demand at retrieval time.
 
 ```
 /shl/**              -> permitAll()         # SHL protocol (public, key-in-URL is the auth)
-/api/health          -> permitAll()         # Health checks
-/api/**              -> ExternalAuthFilter  # Requires X-Consumer-Id header
+/health              -> permitAll()         # Health checks
+/secure/api/**       -> ExternalAuthFilter  # Requires X-Consumer-Id header
 everything else      -> denyAll()
 ```
 
@@ -410,6 +459,7 @@ everything else      -> denyAll()
 - CORS: open on `/shl/**`, restricted on `/api/**`
 - Security headers matching Next.js on all responses
 - HealthLake access: AWS SigV4 request signing via default credential chain
+- **Network assumption:** ALB + security groups ensure only OAuth2 proxy can reach `/secure/api/**` endpoints. `X-Consumer-Id` cannot be spoofed from outside the VPC. Public `/shl/**` endpoints are internet-facing; brute-force is mitigated by 256-bit entropy in link IDs (2^256 possible IDs).
 
 ---
 
@@ -484,6 +534,18 @@ org.testcontainers:testcontainers-mongodb:2.0.3
   "label": "Patient's health summary"
 }
 ```
+- `url`: manifest/file endpoint — max 128 chars, must contain 256+ bits of entropy
+- `flag`: alphabetically concatenated flags. v1: `"U"` only. Phase 2: `"L"`, `"LP"`, etc.
+- `key`: 32-byte symmetric key, base64url-encoded (43 chars)
+- `exp`: REQUIRED per PSHD profile (UNIX epoch seconds)
+- `label`: optional, max 80 chars
+
+### Flag Reference
+| Flag | Meaning | v1 Scope | Constraints |
+|------|---------|----------|-------------|
+| U | Direct file access (GET returns JWE) | Yes | Cannot coexist with P |
+| L | Long-term (content may evolve) | Phase 2 | Can coexist with P or U |
+| P | Passcode required (manifest POST needs `passcode`) | Phase 2 | Cannot coexist with U; requires lifetime attempt tracking |
 
 ### SHLink URL Format
 ```
@@ -493,8 +555,29 @@ shlink:/eyJ1cmwiOiJodHRwczovL...base64url-encoded-payload
 ### JWE Encryption Parameters
 - Algorithm: `dir` (direct encryption with shared symmetric key)
 - Encryption: `A256GCM` (AES-256-GCM authenticated encryption)
-- Content Type: `application/fhir+json`
+- JWE `cty` header: `application/fhir+json`
+- HTTP response Content-Type: `application/jose`
 - Compression: `DEF` (DEFLATE, optional)
+- Nimbus JOSE handles unique nonce/IV per encryption automatically
+
+### PSHD Bundle Requirements (PatientSharedBundle)
+The `FhirBundleBuilder` must produce a compliant PatientSharedBundle:
+```
+Bundle (type: collection, timestamp: required)
+├── Patient (1..1, required)
+├── DocumentReference (0..1, if includePdf=true)
+│   ├── status: current
+│   ├── type: LOINC 60591-5 (Patient summary Document)
+│   ├── category: patient-shared (from patient-shared-category CodeSystem)
+│   ├── author: reference to Patient
+│   ├── content.attachment.contentType: application/pdf
+│   ├── content.attachment.data: base64-encoded PDF
+│   └── securityLabel: PATAST (patient asserted)
+└── Discrete FHIR resources (1..*, from selectedResources)
+    └── Conditions, Medications, Observations, etc.
+```
+- Resources SHOULD NOT include `meta.profile` — receivers SHALL NOT require it
+- At minimum: Patient + at least one of (DocumentReference with PDF, discrete FHIR resources)
 
 ---
 
@@ -511,7 +594,7 @@ shlink:/eyJ1cmwiOiJodHRwczovL...base64url-encoded-payload
 - `config/SecurityConfig.java` — filter chain
 - `config/MongoConfig.java` — indexes for all 4 collections
 - `config/AwsConfig.java` — S3Client + Apache5HttpClient
-- `config/JacksonConfig.java` — Jackson 2/3 dual-stack
+- `config/JacksonConfig.java` — Jackson 3 customization (Jackson 2 via HAPI transitive, no dual-stack config)
 - `config/WebMvcConfig.java` — CORS, security headers
 - `auth/ExternalAuthFilter.java` — X-Consumer-Id validation
 - `auth/RequestContext.java` — ScopedValue
@@ -569,27 +652,34 @@ shlink:/eyJ1cmwiOiJodHRwczovL...base64url-encoded-payload
 - **Verify**: CRUD operations, shlink URI format matches Node.js, effectiveStatus computed
 
 ### Step 9: SHL API + PDF
-- `shl/ShlApiController.java` — POST /api/v1/shl (list, get, preview, counts)
-- `shl/ShlMutationController.java` — PATCH /api/v1/shl (create, revoke)
+- `shl/ShlController.java` — POST /secure/api/v1/shl/* (search, get, preview, counts, history, create, revoke)
 - `pdf/PdfGenerationService.java` — OpenHTMLtoPDF + Thymeleaf
 - `src/main/resources/templates/pdf/patient-summary.html`
-- **Verify**: All CRUD actions, audit trail, PDF generation with accessible tags
+- **Verify**: All 7 endpoints work, audit trail, PDF generation with accessible tags
 
-### Step 10: SHL Public Retrieval
-- `shl/ShlPublicController.java` — GET + POST + OPTIONS
+### Step 10: SHL Public Retrieval (v1: GET only)
+- `shl/ShlPublicController.java` — GET + OPTIONS (v1); Phase 2 adds POST manifest
 - `shl/service/ShlRetrievalService.java`
-- 405 responses with Allow header for wrong method
-- **Verify**: Full E2E — snapshot GET + live POST retrieval
+- Validate `recipient` query param (required, return 400 if missing/empty)
+- **Verify**: Full E2E — create snapshot link → GET retrieval → decrypt → valid FHIR Bundle
 
 ### Step 11: Structured JSON Logging
 - Configure structured JSON log format (EKS auto-forwards to Splunk/Datadog)
 - Log fields: requestId, consumerId, enterpriseId, action, duration, status
 - **Verify**: Logs output valid JSON, contain required fields
 
-**Deferred (future phases):**
+**Deferred (Phase 2):**
+- Live mode (manifest POST, `status: can-change/no-longer-valid`)
+- P flag (passcode lifecycle: hash storage, lifetime attempt limits, 401 + remainingAttempts)
+- L flag (long-term links, periodic re-fetch)
+- `location` URLs (S3 pre-signed URLs as alternative to embedded JWE)
+- `embeddedLengthMax` handling in manifest POST
+- Manifest `list` field (optional FHIR List resource)
 - Rate limiting (ALB vs app-level TBD)
 - Splunk/Datadog integration
 - Custom metrics
+
+**Phase 2 P flag extensibility:** `ShlLinkDocument` already stores `flag` as a String (not enum) to support future flag combinations. Adding P requires: `passcodeHash` (bcrypt), `maxAttempts` (int, default 10), `failedAttempts` (int, default 0) fields. P and U are mutually exclusive — validate on creation.
 
 ### Step 12: Integration Tests
 - Full E2E flow tests (Testcontainers)
@@ -605,22 +695,26 @@ shlink:/eyJ1cmwiOiJodHRwczovL...base64url-encoded-payload
 | # | Test | Step |
 |---|------|------|
 | 1 | Crypto round-trip (key gen → wrap → unwrap → encrypt → decrypt) | 4 |
-| 2 | FHIR transforms match Node.js compact output shapes | 6 |
-| 3 | Crosswalk: enterpriseId → healthLakePatientId | 3 |
-| 4 | SHL create (snapshot): JWE in S3, link in MongoDB, audit logged | 8-9 |
-| 5 | SHL create (live): no S3 upload, link in MongoDB | 8-9 |
-| 6 | SHL snapshot retrieval: GET → JWE → decrypt → valid FHIR | 10 |
-| 7 | SHL live retrieval: POST → manifest with embedded JWE | 10 |
-| 8 | SHL wrong method: GET on live → 405, POST on snapshot → 405 | 10 |
-| 9 | GraphQL: 10 clinical queries, date filtering, resourceCounts | 7 |
-| 10 | healthDashboard: all 10 clinical types in parallel | 7 |
-| 11 | Auth: /api/** without X-Consumer-Id → 401 | 1 |
-| 12 | Auth: /shl/{id} without auth → 200 (public) | 10 |
-| 13 | Audit: every action (5 SHL + fhir_query) produces correct log | 3-10 |
-| 14 | Security headers match Next.js on all responses | 1 |
-| 15 | CORS: open on /shl/**, restricted on /api/** | 1 |
-| 16 | effectiveStatus: active + expired → "expired" | 8 |
-| 17 | E2E: API → create link → retrieve via public endpoint | 12 |
-| 18 | Virtual thread pinning: none with -Djdk.tracePinnedThreads=full | 12 |
-| 19 | Structured JSON logs contain requestId, consumerId, action | 11 |
-| 20 | shlink URI format matches Node.js exactly | 8 |
+| 2 | Crypto key rotation (wrap with v1, unwrap with v1 after v2 becomes current) | 4 |
+| 3 | FHIR transforms match Node.js compact output shapes | 6 |
+| 4 | PSHD Bundle structure: Patient + DocumentReference (LOINC 60591-5) + discrete resources | 6 |
+| 5 | Crosswalk: enterpriseId → healthLakePatientId | 3 |
+| 6 | SHL create (snapshot, U flag): JWE in S3, link in MongoDB, audit logged | 8-9 |
+| 7 | SHL create rejects missing expiresAt with 400 | 8-9 |
+| 8 | Link ID has 256-bit entropy (32-byte SecureRandom, base64url, 43 chars) | 8 |
+| 9 | SHL snapshot retrieval: GET with recipient → JWE → decrypt → valid FHIR | 10 |
+| 10 | SHL retrieval rejects missing/empty recipient with 400 | 10 |
+| 11 | SHL retrieval of revoked link → audit LINK_ACCESS_REVOKED + 404 | 10 |
+| 12 | SHL retrieval of expired link → audit LINK_ACCESS_EXPIRED + 404 | 10 |
+| 13 | GraphQL: 10 clinical queries, date filtering, resourceCounts | 7 |
+| 14 | healthDashboard: all 10 clinical types in parallel | 7 |
+| 15 | Auth: /secure/api/** without X-Consumer-Id → 401 | 1 |
+| 16 | Auth: /shl/{id} without auth → 200 (public) | 10 |
+| 17 | Audit: every action (SHL + fhir_query) produces correct log with recipient | 3-10 |
+| 18 | Security headers match Next.js on all responses | 1 |
+| 19 | CORS: open on /shl/**, restricted on /api/** | 1 |
+| 20 | effectiveStatus: active + expired → "expired" | 8 |
+| 21 | E2E: API → create link → retrieve via public GET → decrypt → valid Bundle | 12 |
+| 22 | Virtual thread pinning: none with -Djdk.tracePinnedThreads=full | 12 |
+| 23 | Structured JSON logs contain requestId, consumerId, action | 11 |
+| 24 | shlink URI format matches Node.js exactly | 8 |
