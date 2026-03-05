@@ -3,8 +3,8 @@
 ## Context
 
 Build `hs-api` — a Spring Boot 4.0.3 + Java 25 backend exposing:
-1. **FHIR GraphQL API** — 10 clinical resource types with compact transforms for server-to-server consumers
-2. **SHL REST API** — CRUD + public HL7 SHL protocol (v1: snapshot with U flag; Phase 2: live mode + manifest)
+1. **FHIR GraphQL API** — 11 resource types (10 clinical + patient demographics) with compact transforms for server-to-server consumers
+2. **SHL REST API** — CRUD + public HL7 SHL protocol (snapshot with U flag + live mode with manifest POST)
 3. **Data layer** — MongoDB, S3, HealthLake (owned by Spring Boot)
 
 **Reference**: The existing Node.js implementation (hs-web-poc) serves as design inspiration. Spring Boot owns the API contract and data schema. The Next.js frontend will consume Spring Boot APIs.
@@ -25,7 +25,7 @@ Build `hs-api` — a Spring Boot 4.0.3 + Java 25 backend exposing:
 | **FHIR data store** | AWS HealthLake (FHIR R4 v4.0.1 only) | Authoritative store for all FHIR resources |
 | **Transactional DB** | MongoDB (imperative + virtual threads) | SHL metadata, audit logs, patient crosswalk |
 | **SHL payload storage** | AWS S3 | Encrypted JWE blobs (snapshot mode payloads) |
-| **GraphQL** | Spring for GraphQL 2.0 (WebMVC transport) | 10 resource type queries over HealthLake |
+| **GraphQL** | Spring for GraphQL 2.0 (WebMVC transport) | 11 resource type queries over HealthLake |
 | **Web framework** | Spring WebMVC + Virtual Threads | REST + GraphQL endpoints |
 | **Auth** | X-Consumer-Id header from OAuth2 proxy | Spring Boot trusts proxy, no token validation |
 | **PDF generation** | OpenHTMLtoPDF + Thymeleaf | Accessible PDF/UA with proprietary fonts |
@@ -106,13 +106,13 @@ com.chanakya.hsapi/
 
   shl/
     ShlController.java            # POST /secure/api/v1/shl/* (search, get, preview, counts, history, create, revoke)
-    ShlPublicController.java      # GET /shl/{id}?recipient={org}, OPTIONS /shl/{id} (v1: snapshot U-flag only)
+    ShlPublicController.java      # GET /shl/{id}?recipient={org} (U flag), POST /shl/{id} (manifest, live mode), OPTIONS /shl/{id}
     model/
       ShlLinkDocument.java        # @Document("shl_links")
       ShlAuditLogDocument.java    # @Document("shl_audit_log")
-      ShlMode.java                # Enum: SNAPSHOT (v1) | LIVE (Phase 2)
+      ShlMode.java                # Enum: SNAPSHOT | LIVE
       ShlStatus.java              # Enum: ACTIVE, REVOKED
-      ShlFlag.java                # Enum: U (direct-file) — Phase 2 adds L (long-term), P (passcode)
+      ShlFlag.java                # Enum: U (direct-file), L (long-term) — Phase 2 adds P (passcode)
       AccessRecord.java           # Record: recipient, action, timestamp — embedded in ShlLinkDocument
       ShlAuditAction.java         # Enum: LINK_CREATED, LINK_VIEWED, LINK_REVOKED, LINK_ACCESSED, LINK_ACCESS_EXPIRED, LINK_ACCESS_REVOKED, LINK_DENIED
       FhirResourceType.java       # Enum: MEDICATION, IMMUNIZATION, ALLERGY, etc.
@@ -124,10 +124,10 @@ com.chanakya.hsapi/
       ShlCreateResponse.java      # Record: hsid_uuid, shlinkUrl, qrData, expiresAt
       ShlCountsResponse.java      # Record: per-resource-type counts
       ShlAccessHistoryResponse.java # Record: hsid_uuid, history[] — reads from shl_links.accessHistory (single doc read)
-      # Phase 2: ManifestResponse.java — Record: status, list?, files[] (manifest POST for live/non-U links)
+      ManifestResponse.java        # Record: status, list?, files[] (manifest POST for live/non-U links)
     service/
       ShlService.java             # Create, search, get, preview, counts, revoke, history
-      ShlRetrievalService.java    # Public snapshot GET retrieval (v1); Phase 2: manifest POST
+      ShlRetrievalService.java    # Public retrieval: GET (U flag snapshot) + POST (manifest for live mode)
       ShlinkBuilder.java          # Build shlink:/ URIs (link ID: 32-byte SecureRandom, base64url)
     repository/
       ShlLinkRepository.java      # MongoRepository for shl_links
@@ -159,6 +159,7 @@ com.chanakya.hsapi/
     ClaimController.java
     AppointmentController.java
     CareTeamController.java
+    PatientController.java        # @QueryMapping patientSummary(enterpriseId) — demographics
     ResourceCountsController.java # @QueryMapping resourceCounts, healthDashboard
     transform/                    # FHIR Bundle → compact GraphQL types
       MedicationTransform.java    # MedicationRequest → Medication
@@ -171,17 +172,18 @@ com.chanakya.hsapi/
       ClaimTransform.java
       AppointmentTransform.java
       CareTeamTransform.java
+      PatientTransform.java       # Patient → PatientSummary (demographics)
     type/                         # GraphQL response records
       MedicationType.java         # record(name, status, dosage, reason, startDate)
       ImmunizationType.java
-      ... (10 clinical types matching schema)
+      ... (10 clinical types + PatientSummaryType matching schema)
       ResourceCountsType.java
       HealthDashboardType.java
 
   crosswalk/
     PatientCrosswalkDocument.java # @Document("patient_crosswalk")
     PatientCrosswalkRepository.java
-    PatientCrosswalkService.java  # enterpriseId → List<healthLakePatientId> lookup
+    PatientCrosswalkService.java  # enterpriseId → healthLakePatientId lookup
 
   pdf/
     PdfGenerationService.java     # CMS PatientSharedDocumentReference PDF
@@ -221,8 +223,8 @@ public class ShlLinkDocument {
     @Id private String id;                           // 32-byte SecureRandom, base64url (256-bit entropy, 43 chars)
     private String enterpriseId;                    // iMDM member ID, indexed
     private String label;                           // Max 80 chars
-    private ShlMode mode;                           // SNAPSHOT (v1) | LIVE (Phase 2)
-    private String flag;                            // "U" (v1). Phase 2: "L", "LP" — alphabetically concatenated
+    private ShlMode mode;                           // SNAPSHOT | LIVE
+    private String flag;                            // "U" (snapshot) or "L" (live). Phase 2: "LP" — alphabetically concatenated
     private String encryptionKey;                   // Wrapped AES key (base64url)
     private int keyVersion;                         // Master key version used for wrapping (default: 1)
     private List<FhirResourceType> selectedResources;
@@ -252,8 +254,8 @@ record AccessRecord(
 | `shl_links.accessHistory[]` | Operational — "who accessed my link?" | Patient/admin via `/history` | Compact: recipient, action, timestamp |
 | `shl_audit_log` | Compliance — system-wide forensic trail | Security/audit team | Full: IP, UA, contentHash, requestId, consumerId |
 
-- v1 (U flag, short-lived links): access count per link is low (1-5), no growth concern
-- Phase 2 (L flag, long-term): cap embedded list at 50 entries; older entries remain in `shl_audit_log`
+- U flag (short-lived snapshot links): access count per link is low (1-5), no growth concern
+- L flag (long-term live links): cap embedded list at 50 entries; older entries remain in `shl_audit_log`
 ```
 
 Indexes: `{enterpriseId, status}`, `{expiresAt}`
@@ -282,14 +284,14 @@ Indexes: `{linkId, timestamp desc}`, `{enterpriseId, timestamp desc}`
 
 ### `patient_crosswalk` Collection
 
-One enterpriseId can map to multiple HealthLake patient resource IDs. All FHIR queries fan out across all mapped IDs and aggregate results.
+One enterpriseId maps to one HealthLake patient resource ID.
 
 ```java
 @Document("patient_crosswalk")
 public class PatientCrosswalkDocument {
     @Id private String id;
     private String enterpriseId;                    // Unique index — iMDM member ID
-    private List<String> healthLakePatientIds;      // One-to-many mapping
+    private String healthLakePatientId;             // 1:1 mapping
 }
 ```
 
@@ -322,7 +324,7 @@ public class AuditLogDocument {
 POST /secure/api/v1/graphql
 X-Consumer-Id: <consumer-id>
 ```
-10 queries + resourceCounts + healthDashboard
+11 queries + resourceCounts + healthDashboard
 
 ### SHL Secured Endpoints (Authenticated — all POST, IDs in body)
 ```
@@ -349,11 +351,8 @@ POST /secure/api/v1/shl/revoke    →  Revoke an existing link
 ### SHL Public (No Auth — HL7 Protocol)
 ```
 GET     /shl/{id}?recipient={org}   →  Direct file retrieval (U flag — returns JWE, Content-Type: application/jose)
+POST    /shl/{id}                   →  Manifest retrieval (live mode — returns manifest JSON with embedded JWE)
 OPTIONS /shl/{id}                   →  CORS preflight
-```
-**Phase 2:**
-```
-POST    /shl/{id}                   →  Manifest retrieval (non-U-flag links: snapshot w/o U, live mode)
 ```
 
 ### Infrastructure
@@ -369,16 +368,15 @@ GET /health  →  Health check (no auth)
 ```
 1. ExternalAuthFilter validates X-Consumer-Id
 2. GraphQL resolver extracts enterpriseId from query variable
-3. PatientCrosswalkService looks up List<healthLakePatientId>
-4. FhirClient fetches FHIR Bundles from HealthLake for EACH patient ID (parallel fan-out)
-5. Aggregate all Bundle entries across patients
-6. Transform converts entries to compact GraphQL types
-7. Date filter (startDate/endDate, inclusive) + sort by resource date (default: most recent first)
-8. Audit: write to audit_log (action: "fhir_query", resourceType)
-9. Return compact response
+3. PatientCrosswalkService looks up healthLakePatientId (1:1)
+4. FhirClient fetches FHIR Bundle from HealthLake for the patient ID
+5. Transform converts Bundle entries to compact GraphQL types
+6. Date filter (startDate/endDate, inclusive) + sort by resource date (default: most recent first)
+7. Audit: write to audit_log (action: "fhir_query", resourceType)
+8. Return compact response
 ```
 
-**Date filter + sort** is a common pattern on all 10 clinical queries:
+**Date filter + sort** is a common pattern on all 11 queries (10 clinical + patientSummary):
 - `startDate` / `endDate` (optional, inclusive)
 - `sortOrder` (ASC/DESC, default: DESC = most recent first)
 - Each resource type has a canonical date field (e.g., MedicationRequest.authoredOn, Immunization.occurrenceDateTime)
@@ -388,7 +386,7 @@ GET /health  →  Health check (no auth)
 ```
 1. Validate X-Consumer-Id + request body (expiresAt REQUIRED, return 400 if missing)
 2. Generate link ID: 32-byte SecureRandom → base64url (43 chars, 256-bit entropy)
-3. PatientCrosswalkService looks up List<healthLakePatientId>
+3. PatientCrosswalkService looks up healthLakePatientId (1:1)
 4. Generate 32-byte AES key → MasterKeyService.wrapKey(keyVersion=current) → encrypted key
 5. FhirBundleBuilder: fetch selectedResources from HealthLake → build PatientSharedBundle
 6. Optional: PdfGenerationService (OpenHTMLtoPDF + Thymeleaf) → DocumentReference entry
@@ -415,32 +413,29 @@ GET /health  →  Health check (no auth)
 6. Return JWE string, Content-Type: application/jose
 ```
 
-### Phase 2 Flows (Not in v1)
-
-**Flow 4: SHL Create (Live mode)**
+### Flow 4: SHL Create (Live mode)
 ```
 Same as Flow 2 EXCEPT steps 5-8 skipped (no bundle built, no S3 upload).
 s3Key is null. flag = "L". Bundle built on-demand at retrieval time.
 ```
 
-**Flow 5: SHL Manifest Retrieval (POST /shl/{id} — non-U-flag links)**
+### Flow 5: SHL Manifest Retrieval (POST /shl/{id} — live mode)
 ```
 1. Parse JSON body: { recipient (required), passcode? (Phase 2+), embeddedLengthMax? }
 2. Find link in shl_links (not found → audit LINK_DENIED + 404)
 3. Check status:
    - revoked/expired → return manifest { status: "no-longer-valid", files: [] }
-4. For live mode: build fresh Bundle, encrypt → JWE
-   For snapshot w/o U flag: download JWE from S3
-5. Audit: LINK_ACCESSED
-6. Return manifest: { status: "finalized"|"can-change", files: [{ contentType, embedded: JWE, lastUpdated }] }
+4. Build fresh Bundle from HealthLake, encrypt → JWE
+5. Push AccessRecord(recipient, ACCESSED, now) to shl_links.accessHistory
+   Write full audit to shl_audit_log (contentHash, recipient, IP, UA)
+6. Return manifest: { status: "can-change", files: [{ contentType: "application/smart-health-card", embedded: JWE }] }
 ```
 
 ### Flow 6: resourceCounts (Parallel)
 ```
-1. PatientCrosswalkService looks up List<healthLakePatientId>
-2. CompletableFuture.allOf() — parallel HealthLake calls per resource type × patient ID
-3. Aggregate counts across all patient IDs per resource type
-4. Return ResourceCounts
+1. PatientCrosswalkService looks up healthLakePatientId (1:1)
+2. CompletableFuture.allOf() — parallel HealthLake calls per resource type
+3. Return ResourceCounts
 ```
 
 ---
@@ -535,7 +530,7 @@ org.testcontainers:testcontainers-mongodb:2.0.3
 }
 ```
 - `url`: manifest/file endpoint — max 128 chars, must contain 256+ bits of entropy
-- `flag`: alphabetically concatenated flags. v1: `"U"` only. Phase 2: `"L"`, `"LP"`, etc.
+- `flag`: alphabetically concatenated flags. v1: `"U"` (snapshot) or `"L"` (live). Phase 2: `"LP"`, etc.
 - `key`: 32-byte symmetric key, base64url-encoded (43 chars)
 - `exp`: REQUIRED per PSHD profile (UNIX epoch seconds)
 - `label`: optional, max 80 chars
@@ -544,7 +539,7 @@ org.testcontainers:testcontainers-mongodb:2.0.3
 | Flag | Meaning | v1 Scope | Constraints |
 |------|---------|----------|-------------|
 | U | Direct file access (GET returns JWE) | Yes | Cannot coexist with P |
-| L | Long-term (content may evolve) | Phase 2 | Can coexist with P or U |
+| L | Long-term (content may evolve, live mode) | Yes | Can coexist with P (Phase 2); not with U |
 | P | Passcode required (manifest POST needs `passcode`) | Phase 2 | Cannot coexist with U; requires lifetime attempt tracking |
 
 ### SHLink URL Format
@@ -633,14 +628,14 @@ Bundle (type: collection, timestamp: required)
 - **Verify**: S3 round-trip, FHIR client fetches from local HAPI FHIR
 
 ### Step 6: FHIR Transforms + Bundle Builder
-- `graphql/transform/*.java` — 10 transforms
-- `graphql/type/*.java` — 12 + ResourceCounts + HealthDashboard records
+- `graphql/transform/*.java` — 11 transforms (10 clinical + patient demographics)
+- `graphql/type/*.java` — 11 types + ResourceCounts + HealthDashboard records
 - `fhir/FhirBundleBuilder.java`
 - **Verify**: Unit tests for each transform matching Node.js output shapes
 
 ### Step 7: GraphQL API
-- `src/main/resources/graphql/schema.graphqls` — full 10-query schema
-- `graphql/*Controller.java` — 10 controllers + resourceCounts + healthDashboard
+- `src/main/resources/graphql/schema.graphqls` — full 11-query schema
+- `graphql/*Controller.java` — 11 controllers + resourceCounts + healthDashboard
 - `config/GraphQlConfig.java`
 - **Verify**: GraphQL queries return correct data, date filtering works, audit logged
 
@@ -657,11 +652,12 @@ Bundle (type: collection, timestamp: required)
 - `src/main/resources/templates/pdf/patient-summary.html`
 - **Verify**: All 7 endpoints work, audit trail, PDF generation with accessible tags
 
-### Step 10: SHL Public Retrieval (v1: GET only)
-- `shl/ShlPublicController.java` — GET + OPTIONS (v1); Phase 2 adds POST manifest
+### Step 10: SHL Public Retrieval (GET + POST)
+- `shl/ShlPublicController.java` — GET (U flag snapshot) + POST (manifest, live mode) + OPTIONS
 - `shl/service/ShlRetrievalService.java`
-- Validate `recipient` query param (required, return 400 if missing/empty)
-- **Verify**: Full E2E — create snapshot link → GET retrieval → decrypt → valid FHIR Bundle
+- GET: validate `recipient` query param (required, return 400 if missing/empty)
+- POST: parse JSON body `{ recipient }`, build fresh Bundle for live mode, return manifest
+- **Verify**: E2E snapshot (create → GET → decrypt) + E2E live (create → POST manifest → decrypt)
 
 ### Step 11: Structured JSON Logging
 - Configure structured JSON log format (EKS auto-forwards to Splunk/Datadog)
@@ -669,9 +665,7 @@ Bundle (type: collection, timestamp: required)
 - **Verify**: Logs output valid JSON, contain required fields
 
 **Deferred (Phase 2):**
-- Live mode (manifest POST, `status: can-change/no-longer-valid`)
 - P flag (passcode lifecycle: hash storage, lifetime attempt limits, 401 + remainingAttempts)
-- L flag (long-term links, periodic re-fetch)
 - `location` URLs (S3 pre-signed URLs as alternative to embedded JWE)
 - `embeddedLengthMax` handling in manifest POST
 - Manifest `list` field (optional FHIR List resource)
@@ -698,7 +692,7 @@ Bundle (type: collection, timestamp: required)
 | 2 | Crypto key rotation (wrap with v1, unwrap with v1 after v2 becomes current) | 4 |
 | 3 | FHIR transforms match Node.js compact output shapes | 6 |
 | 4 | PSHD Bundle structure: Patient + DocumentReference (LOINC 60591-5) + discrete resources | 6 |
-| 5 | Crosswalk: enterpriseId → healthLakePatientId | 3 |
+| 5 | Crosswalk: enterpriseId → healthLakePatientId (1:1) | 3 |
 | 6 | SHL create (snapshot, U flag): JWE in S3, link in MongoDB, audit logged | 8-9 |
 | 7 | SHL create rejects missing expiresAt with 400 | 8-9 |
 | 8 | Link ID has 256-bit entropy (32-byte SecureRandom, base64url, 43 chars) | 8 |
@@ -706,15 +700,18 @@ Bundle (type: collection, timestamp: required)
 | 10 | SHL retrieval rejects missing/empty recipient with 400 | 10 |
 | 11 | SHL retrieval of revoked link → audit LINK_ACCESS_REVOKED + 404 | 10 |
 | 12 | SHL retrieval of expired link → audit LINK_ACCESS_EXPIRED + 404 | 10 |
-| 13 | GraphQL: 10 clinical queries, date filtering, resourceCounts | 7 |
-| 14 | healthDashboard: all 10 clinical types in parallel | 7 |
+| 13 | GraphQL: 11 queries (10 clinical + patientSummary), date filtering, resourceCounts | 7 |
+| 14 | healthDashboard: all 11 resource types in parallel | 7 |
 | 15 | Auth: /secure/api/** without X-Consumer-Id → 401 | 1 |
 | 16 | Auth: /shl/{id} without auth → 200 (public) | 10 |
 | 17 | Audit: every action (SHL + fhir_query) produces correct log with recipient | 3-10 |
 | 18 | Security headers match Next.js on all responses | 1 |
 | 19 | CORS: open on /shl/**, restricted on /api/** | 1 |
 | 20 | effectiveStatus: active + expired → "expired" | 8 |
-| 21 | E2E: API → create link → retrieve via public GET → decrypt → valid Bundle | 12 |
-| 22 | Virtual thread pinning: none with -Djdk.tracePinnedThreads=full | 12 |
-| 23 | Structured JSON logs contain requestId, consumerId, action | 11 |
-| 24 | shlink URI format matches Node.js exactly | 8 |
+| 21 | E2E snapshot: API → create snapshot link → GET retrieval → decrypt → valid Bundle | 12 |
+| 22 | E2E live: API → create live link → POST manifest → decrypt embedded JWE → valid Bundle | 12 |
+| 23 | SHL create live mode: no S3 upload, s3Key null, flag "L" | 8-9 |
+| 24 | SHL manifest POST: returns { status: "can-change", files: [...] } for live links | 10 |
+| 25 | Virtual thread pinning: none with -Djdk.tracePinnedThreads=full | 12 |
+| 26 | Structured JSON logs contain requestId, consumerId, action | 11 |
+| 27 | shlink URI format matches Node.js exactly | 8 |
