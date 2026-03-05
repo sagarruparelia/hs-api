@@ -1,7 +1,5 @@
 package com.chanakya.hsapi.shl.dto;
 
-import com.chanakya.hsapi.shl.model.FhirResourceType;
-
 import java.time.Instant;
 import java.util.List;
 
@@ -15,6 +13,6 @@ public record ShlLinkResponse(
     String qrData,
     Instant expiresAt,
     Instant createdAt,
-    List<FhirResourceType> selectedResources,
+    List<String> selectedResources,
     boolean includePdf
 ) {}

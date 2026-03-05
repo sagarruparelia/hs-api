@@ -1,6 +1,5 @@
 package com.chanakya.hsapi.fhir;
 
-import com.chanakya.hsapi.shl.model.FhirResourceType;
 import org.hl7.fhir.r4.model.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,6 +13,27 @@ public class FhirBundleBuilder {
 
     private static final Logger log = LoggerFactory.getLogger(FhirBundleBuilder.class);
 
+    // Maps both our enum names and FHIR resource type names to the HealthLake resource type
+    private static final Map<String, String> RESOURCE_TYPE_MAP = Map.ofEntries(
+        // Our enum names (uppercase)
+        Map.entry("MEDICATION", "MedicationRequest"),
+        Map.entry("IMMUNIZATION", "Immunization"),
+        Map.entry("ALLERGY", "AllergyIntolerance"),
+        Map.entry("CONDITION", "Condition"),
+        Map.entry("PROCEDURE", "Procedure"),
+        Map.entry("LAB_RESULT", "Observation"),
+        Map.entry("COVERAGE", "Coverage"),
+        Map.entry("CLAIM", "ExplanationOfBenefit"),
+        Map.entry("APPOINTMENT", "Appointment"),
+        Map.entry("CARE_TEAM", "CareTeam"),
+        // FHIR resource type names (as stored by existing data)
+        Map.entry("MedicationRequest", "MedicationRequest"),
+        Map.entry("AllergyIntolerance", "AllergyIntolerance"),
+        Map.entry("ExplanationOfBenefit", "ExplanationOfBenefit"),
+        Map.entry("Observation", "Observation"),
+        Map.entry("CareTeam", "CareTeam")
+    );
+
     private final FhirClient fhirClient;
 
     public FhirBundleBuilder(FhirClient fhirClient) {
@@ -21,7 +41,7 @@ public class FhirBundleBuilder {
     }
 
     public Bundle buildPatientSharedBundle(String healthLakePatientId,
-                                           List<FhirResourceType> selectedResources,
+                                           List<String> selectedResources,
                                            boolean includePdf,
                                            byte[] pdfBytes,
                                            String patientName) {
@@ -49,23 +69,10 @@ public class FhirBundleBuilder {
         }
 
         // Discrete FHIR resources (parallel fetch)
-        Map<FhirResourceType, String> resourceTypeMapping = Map.of(
-            FhirResourceType.MEDICATION, "MedicationRequest",
-            FhirResourceType.IMMUNIZATION, "Immunization",
-            FhirResourceType.ALLERGY, "AllergyIntolerance",
-            FhirResourceType.CONDITION, "Condition",
-            FhirResourceType.PROCEDURE, "Procedure",
-            FhirResourceType.LAB_RESULT, "Observation",
-            FhirResourceType.COVERAGE, "Coverage",
-            FhirResourceType.CLAIM, "ExplanationOfBenefit",
-            FhirResourceType.APPOINTMENT, "Appointment",
-            FhirResourceType.CARE_TEAM, "CareTeam"
-        );
-
         List<CompletableFuture<Bundle>> futures = selectedResources.stream()
-            .filter(rt -> rt != FhirResourceType.PATIENT)
+            .filter(rt -> !"PATIENT".equalsIgnoreCase(rt) && !"Patient".equals(rt))
             .map(rt -> CompletableFuture.supplyAsync(() -> {
-                String fhirType = resourceTypeMapping.getOrDefault(rt, rt.name());
+                String fhirType = RESOURCE_TYPE_MAP.getOrDefault(rt, rt);
                 return fhirClient.searchResources(fhirType, healthLakePatientId);
             }))
             .toList();

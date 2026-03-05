@@ -4,9 +4,11 @@ spring:
   threads:
     virtual:
       enabled: true
+  mongodb:
+    uri: ${MONGODB_URI:mongodb://localhost:27017/hsapi}
+    database: ${MONGODB_DATABASE:hsapi}
   data:
     mongodb:
-      uri: ${MONGODB_URI:mongodb://localhost:27017/hsapi}
       auto-index-creation: false
   thymeleaf:
     prefix: classpath:/templates/
@@ -32,7 +34,7 @@ management:
       show-details: never
 
 aws:
-  region: ${AWS_REGION:us-east-1}
+  region: ${AWS_REGION:ap-south-1}
   healthlake:
     datastore-endpoint: ${HEALTHLAKE_ENDPOINT:}
   s3:

@@ -66,7 +66,15 @@ public class ShlService {
 
     public List<ShlLinkResponse> search(ShlSearchRequest req) {
         return linkRepository.findByEnterpriseId(req.idValue()).stream()
-            .map(this::toResponse)
+            .map(link -> {
+                try {
+                    return toResponse(link);
+                } catch (Exception e) {
+                    log.warn("Skipping link {} — decryption failed: {}", link.getId(), e.getMessage());
+                    return null;
+                }
+            })
+            .filter(java.util.Objects::nonNull)
             .toList();
     }
 
@@ -135,14 +143,14 @@ public class ShlService {
         link.setId(linkId);
         link.setEnterpriseId(req.idValue());
         link.setLabel(req.label());
-        link.setMode(isLive ? ShlMode.LIVE : ShlMode.SNAPSHOT);
+        link.setMode(isLive ? "live" : "snapshot");
         link.setFlag(isLive ? ShlFlag.L : ShlFlag.U);
         link.setEncryptionKey(encryptedKey);
         link.setSelectedResources(req.selectedResources());
         link.setIncludePdf(req.includePdf());
         link.setPatientName(req.patientName());
         link.setExpiresAt(expiresAt);
-        link.setStatus(ShlStatus.ACTIVE);
+        link.setStatus("active");
         link.setS3Key(s3Key);
         link.setCreatedAt(now);
         linkRepository.save(link);
@@ -153,7 +161,7 @@ public class ShlService {
 
         // Audit
         auditService.logShlAction(linkId, req.idValue(), ShlAuditAction.LINK_CREATED,
-            null, Map.of("mode", link.getMode().name(), "flag", link.getFlag()), httpRequest);
+            null, Map.of("mode", link.getMode(), "flag", link.getFlag()), httpRequest);
 
         return new ShlCreateResponse(linkId, shlinkUri, shlinkUri, expiresAt);
     }
@@ -162,7 +170,7 @@ public class ShlService {
         var link = linkRepository.findById(req.hsid_uuid())
             .orElseThrow(() -> new NoSuchElementException("Link not found"));
 
-        link.setStatus(ShlStatus.REVOKED);
+        link.setStatus("revoked");
         linkRepository.save(link);
 
         auditService.logShlAction(link.getId(), link.getEnterpriseId(), ShlAuditAction.LINK_REVOKED,
@@ -183,7 +191,7 @@ public class ShlService {
 
         return new ShlLinkResponse(
             link.getId(), link.getLabel(),
-            link.getMode().name(), link.getFlag(),
+            link.getMode(), link.getFlag(),
             link.getEffectiveStatus(),
             shlinkUri, shlinkUri,
             link.getExpiresAt(), link.getCreatedAt(),

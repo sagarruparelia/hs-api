@@ -2,6 +2,7 @@ package com.chanakya.hsapi.shl.model;
 
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
+import org.springframework.data.mongodb.core.mapping.Field;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -14,22 +15,23 @@ public class ShlLinkDocument {
     private String id;
     private String enterpriseId;
     private String label;
-    private ShlMode mode;
+    private String mode;
     private String flag;
     private String encryptionKey;
-    private List<FhirResourceType> selectedResources;
+    private List<String> selectedResources;
     private boolean includePdf;
     private String patientName;
     private Instant expiresAt;
-    private ShlStatus status;
+    private String status;
     private String s3Key;
     private Instant createdAt;
+    @Field("accessHistory")
     private List<AccessRecord> accessHistory = new ArrayList<>();
 
     public ShlLinkDocument() {}
 
     public String getEffectiveStatus() {
-        if (status == ShlStatus.REVOKED) return "REVOKED";
+        if ("revoked".equalsIgnoreCase(status)) return "REVOKED";
         if (expiresAt != null && Instant.now().isAfter(expiresAt)) return "EXPIRED";
         return "ACTIVE";
     }
@@ -40,22 +42,24 @@ public class ShlLinkDocument {
     public void setEnterpriseId(String enterpriseId) { this.enterpriseId = enterpriseId; }
     public String getLabel() { return label; }
     public void setLabel(String label) { this.label = label; }
-    public ShlMode getMode() { return mode; }
-    public void setMode(ShlMode mode) { this.mode = mode; }
+    public String getMode() { return mode; }
+    public void setMode(String mode) { this.mode = mode; }
+    public void setMode(ShlMode mode) { this.mode = mode.name().toLowerCase(); }
     public String getFlag() { return flag; }
     public void setFlag(String flag) { this.flag = flag; }
     public String getEncryptionKey() { return encryptionKey; }
     public void setEncryptionKey(String encryptionKey) { this.encryptionKey = encryptionKey; }
-    public List<FhirResourceType> getSelectedResources() { return selectedResources; }
-    public void setSelectedResources(List<FhirResourceType> selectedResources) { this.selectedResources = selectedResources; }
+    public List<String> getSelectedResources() { return selectedResources; }
+    public void setSelectedResources(List<String> selectedResources) { this.selectedResources = selectedResources; }
     public boolean isIncludePdf() { return includePdf; }
     public void setIncludePdf(boolean includePdf) { this.includePdf = includePdf; }
     public String getPatientName() { return patientName; }
     public void setPatientName(String patientName) { this.patientName = patientName; }
     public Instant getExpiresAt() { return expiresAt; }
     public void setExpiresAt(Instant expiresAt) { this.expiresAt = expiresAt; }
-    public ShlStatus getStatus() { return status; }
-    public void setStatus(ShlStatus status) { this.status = status; }
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
+    public void setStatus(ShlStatus status) { this.status = status.name().toLowerCase(); }
     public String getS3Key() { return s3Key; }
     public void setS3Key(String s3Key) { this.s3Key = s3Key; }
     public Instant getCreatedAt() { return createdAt; }

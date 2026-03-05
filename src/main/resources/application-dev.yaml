@@ -1,7 +1,7 @@
 spring:
-  data:
-    mongodb:
-      uri: mongodb://localhost:27017/hsapi
+  mongodb:
+    uri: mongodb://localhost:27017/healthsafe
+    database: healthsafe
   graphql:
     graphiql:
       enabled: true
@@ -12,7 +12,11 @@ management:
       show-details: always
 
 aws:
-  region: us-east-1
+  region: ap-south-1
+  healthlake:
+    datastore-endpoint: https://healthlake.ap-south-1.amazonaws.com/datastore/8beccfc1f6ca1e8419ae9f29e5a46be5/r4/
+  s3:
+    bucket: healthsafe-shl-ap-south-1
 
 app:
   encryption-key: dev-encryption-key-32bytes-long!!
