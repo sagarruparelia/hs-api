@@ -74,7 +74,7 @@ Each operation has its own URL. All secured endpoints use POST with IDs in the r
 - Simple encrypt-on-write, decrypt-on-read — no key rotation, no versioning
 - Defense-in-depth: DB breach alone doesn't expose keys (need both MongoDB + `ENCRYPTION_KEY`)
 - Raw key goes into shlink URI; encrypted key stored in MongoDB `encryptionKey` field
-- SHL links are short-lived (5 min to 30 days) — rotation complexity not justified for v1
+- SHL links are short-lived (5 min to 365 days) — rotation complexity not justified for v1
 
 ### 3. PDF Generation — OpenHTMLtoPDF + Thymeleaf
 - `com.openhtmltopdf:openhtmltopdf-pdfbox:1.1.22` (Apache 2.0 license)
@@ -111,7 +111,7 @@ com.chanakya.hsapi/
       ShlAuditLogDocument.java    # @Document("shl_audit_log")
       ShlMode.java                # Enum: SNAPSHOT | LIVE
       ShlStatus.java              # Enum: ACTIVE, REVOKED
-      ShlFlag.java                # Enum: U (direct-file), L (long-term) — Phase 2 adds P (passcode)
+      ShlFlag.java                # Constants + validation: U (direct-file), L (long-term) — Phase 2 adds P (passcode). Stored as String for flag combinations ("LP")
       AccessRecord.java           # Record: recipient, action, timestamp — embedded in ShlLinkDocument
       ShlAuditAction.java         # Enum: LINK_CREATED, LINK_VIEWED, LINK_REVOKED, LINK_ACCESSED, LINK_ACCESS_EXPIRED, LINK_ACCESS_REVOKED, LINK_DENIED
       FhirResourceType.java       # Enum: MEDICATION, IMMUNIZATION, ALLERGY, etc.
@@ -249,8 +249,7 @@ record AccessRecord(
 | `shl_audit_log` | Compliance — system-wide forensic trail | Security/audit team | Full: IP, UA, contentHash, requestId, consumerId |
 
 - U flag (short-lived snapshot links): access count per link is low (1-5), no growth concern
-- L flag (long-term live links): cap embedded list at 50 entries; older entries remain in `shl_audit_log`
-```
+- L flag (long-term live links): cap embedded list at 50 entries via `$push` + `$slice: -50`; older entries remain in `shl_audit_log`
 
 Indexes: `{enterpriseId, status}`, `{expiresAt}`
 
@@ -325,7 +324,7 @@ X-Consumer-Id: <consumer-id>
 POST /secure/api/v1/shl/search    →  List links for an enterprise ID
 POST /secure/api/v1/shl/get       →  Get single link detail
 POST /secure/api/v1/shl/preview   →  Preview link content
-POST /secure/api/v1/shl/counts    →  Resource type counts for a link
+POST /secure/api/v1/shl/counts    →  Resource type counts for a patient (per enterpriseId from HealthLake)
 POST /secure/api/v1/shl/history   →  Access history (who accessed, allowed/denied)
 POST /secure/api/v1/shl/create    →  Create new SHL link
 POST /secure/api/v1/shl/revoke    →  Revoke an existing link
@@ -374,7 +373,6 @@ GET /health  →  Health check (no auth)
 - `startDate` / `endDate` (optional, inclusive)
 - `sortOrder` (ASC/DESC, default: DESC = most recent first)
 - Each resource type has a canonical date field (e.g., MedicationRequest.authoredOn, Immunization.occurrenceDateTime)
-```
 
 ### Flow 2: SHL Create (Snapshot, U flag)
 ```
@@ -387,7 +385,7 @@ GET /health  →  Health check (no auth)
 7. Encrypt Bundle → JWE (dir, A256GCM) using raw AES key
 8. Upload JWE to S3: shl/{enterpriseId}/{linkId}.jwe
 9. Insert ShlLinkDocument to shl_links (encryptionKey = encrypted, flag = "U")
-10. Build shlink URI (raw key in URI, NOT the wrapped key)
+10. Build shlink URI (raw key in URI, NOT the encrypted key)
 11. Audit: LINK_CREATED to shl_audit_log
 12. Return linkId, shlinkUrl, qrData, expiresAt
 ```
@@ -422,7 +420,7 @@ s3Key is null. flag = "L". Bundle built on-demand at retrieval time.
 4. Build fresh Bundle from HealthLake, encrypt → JWE
 5. Push AccessRecord(recipient, ACCESSED, now) to shl_links.accessHistory
    Write full audit to shl_audit_log (contentHash, recipient, IP, UA)
-6. Return manifest: { status: "can-change", files: [{ contentType: "application/smart-health-card", embedded: JWE }] }
+6. Return manifest: { status: "can-change", files: [{ contentType: "application/fhir+json", embedded: JWE }] }
 ```
 
 ### Flow 6: resourceCounts (Parallel)
@@ -445,7 +443,7 @@ everything else      -> denyAll()
 
 - No OAuth2 in Spring Boot — proxy handles authentication
 - CSRF disabled (API-only, no browser sessions)
-- CORS: open on `/shl/**`, restricted on `/api/**`
+- CORS: open on `/shl/**`, restricted on `/secure/api/**`
 - Security headers matching Next.js on all responses
 - HealthLake access: AWS SigV4 request signing via default credential chain
 - **Network assumption:** ALB + security groups ensure only OAuth2 proxy can reach `/secure/api/**` endpoints. `X-Consumer-Id` cannot be spoofed from outside the VPC. Public `/shl/**` endpoints are internet-facing; brute-force is mitigated by 256-bit entropy in link IDs (2^256 possible IDs).
