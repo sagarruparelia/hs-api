@@ -43,7 +43,7 @@ public class CareTeamController {
         var bundle = fhirClient.searchResources("CareTeam", patientId);
         var results = transform.transform(bundle);
         results = filterAndSort(results, startDate, endDate, sortOrder, CareTeamType::startDate);
-        auditService.logFhirQuery(enterpriseId, FhirResourceType.CARE_TEAM, request);
+        auditService.logFhirQuery(enterpriseId, FhirResourceType.CareTeam, request);
         return results;
     }
 }

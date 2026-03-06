@@ -43,7 +43,7 @@ public class ClaimController {
         var bundle = fhirClient.searchResources("ExplanationOfBenefit", patientId);
         var results = transform.transform(bundle);
         results = filterAndSort(results, startDate, endDate, sortOrder, ClaimType::serviceDate);
-        auditService.logFhirQuery(enterpriseId, FhirResourceType.CLAIM, request);
+        auditService.logFhirQuery(enterpriseId, FhirResourceType.ExplanationOfBenefit, request);
         return results;
     }
 }

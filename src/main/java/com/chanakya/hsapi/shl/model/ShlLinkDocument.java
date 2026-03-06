@@ -31,9 +31,9 @@ public class ShlLinkDocument {
     public ShlLinkDocument() {}
 
     public String getEffectiveStatus() {
-        if ("revoked".equalsIgnoreCase(status)) return "REVOKED";
-        if (expiresAt != null && Instant.now().isAfter(expiresAt)) return "EXPIRED";
-        return "ACTIVE";
+        if ("revoked".equalsIgnoreCase(status)) return "revoked";
+        if (expiresAt != null && Instant.now().isAfter(expiresAt)) return "expired";
+        return "active";
     }
 
     public String getId() { return id; }

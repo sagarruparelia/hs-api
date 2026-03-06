@@ -13,24 +13,19 @@ public class FhirBundleBuilder {
 
     private static final Logger log = LoggerFactory.getLogger(FhirBundleBuilder.class);
 
-    // Maps both our enum names and FHIR resource type names to the HealthLake resource type
+    // Maps FHIR resource type names to HealthLake resource type strings.
+    // Enum values now match FHIR names directly; this map handles the Observation special case
+    // (selectedResources stores "Observation" but the search must use "Observation").
     private static final Map<String, String> RESOURCE_TYPE_MAP = Map.ofEntries(
-        // Our enum names (uppercase)
-        Map.entry("MEDICATION", "MedicationRequest"),
-        Map.entry("IMMUNIZATION", "Immunization"),
-        Map.entry("ALLERGY", "AllergyIntolerance"),
-        Map.entry("CONDITION", "Condition"),
-        Map.entry("PROCEDURE", "Procedure"),
-        Map.entry("LAB_RESULT", "Observation"),
-        Map.entry("COVERAGE", "Coverage"),
-        Map.entry("CLAIM", "ExplanationOfBenefit"),
-        Map.entry("APPOINTMENT", "Appointment"),
-        Map.entry("CARE_TEAM", "CareTeam"),
-        // FHIR resource type names (as stored by existing data)
         Map.entry("MedicationRequest", "MedicationRequest"),
+        Map.entry("Immunization", "Immunization"),
         Map.entry("AllergyIntolerance", "AllergyIntolerance"),
-        Map.entry("ExplanationOfBenefit", "ExplanationOfBenefit"),
+        Map.entry("Condition", "Condition"),
+        Map.entry("Procedure", "Procedure"),
         Map.entry("Observation", "Observation"),
+        Map.entry("Coverage", "Coverage"),
+        Map.entry("ExplanationOfBenefit", "ExplanationOfBenefit"),
+        Map.entry("Appointment", "Appointment"),
         Map.entry("CareTeam", "CareTeam")
     );
 

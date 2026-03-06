@@ -43,7 +43,7 @@ public class ImmunizationController {
         var bundle = fhirClient.searchResources("Immunization", patientId);
         var results = transform.transform(bundle);
         results = filterAndSort(results, startDate, endDate, sortOrder, ImmunizationType::date);
-        auditService.logFhirQuery(enterpriseId, FhirResourceType.IMMUNIZATION, request);
+        auditService.logFhirQuery(enterpriseId, FhirResourceType.Immunization, request);
         return results;
     }
 }

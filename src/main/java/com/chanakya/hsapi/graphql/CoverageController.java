@@ -43,7 +43,7 @@ public class CoverageController {
         var bundle = fhirClient.searchResources("Coverage", patientId);
         var results = transform.transform(bundle);
         results = filterAndSort(results, startDate, endDate, sortOrder, CoverageType::startDate);
-        auditService.logFhirQuery(enterpriseId, FhirResourceType.COVERAGE, request);
+        auditService.logFhirQuery(enterpriseId, FhirResourceType.Coverage, request);
         return results;
     }
 }

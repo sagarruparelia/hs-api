@@ -72,7 +72,7 @@ public class ShlService {
         return linkRepository.findByEnterpriseId(req.idValue()).stream()
             .map(link -> {
                 try {
-                    return toResponse(link);
+                    return toResponse(link, false);
                 } catch (Exception e) {
                     log.warn("Skipping link {} — decryption failed: {}", link.getId(), e.getMessage());
                     return null;
@@ -83,28 +83,31 @@ public class ShlService {
     }
 
     public ShlLinkResponse get(ShlSearchRequest req) {
-        var link = linkRepository.findById(req.hsid_uuid())
-            .orElseThrow(() -> new NoSuchElementException("Link not found: " + req.hsid_uuid()));
-        return toResponse(link);
+        var link = linkRepository.findById(req.linkId())
+            .orElseThrow(() -> new NoSuchElementException("Link not found: " + req.linkId()));
+        return toResponse(link, true);
     }
 
-    public ShlLinkResponse preview(ShlSearchRequest req) {
-        return get(req);
-    }
+    public String preview(ShlSearchRequest req) {
+        var link = linkRepository.findById(req.linkId())
+            .orElseThrow(() -> new NoSuchElementException("Link not found: " + req.linkId()));
 
-    public ShlCountsResponse counts(ShlSearchRequest req) {
-        var link = linkRepository.findById(req.hsid_uuid())
-            .orElseThrow(() -> new NoSuchElementException("Link not found"));
-
-        String patientId = crosswalk.resolveHealthLakePatientId(link.getEnterpriseId());
-        Map<String, Integer> counts = Map.of(); // Counts from HealthLake would go here
-        return new ShlCountsResponse(counts, 0);
-    }
-
-    public ShlAccessHistoryResponse history(ShlSearchRequest req) {
-        var link = linkRepository.findById(req.hsid_uuid())
-            .orElseThrow(() -> new NoSuchElementException("Link not found"));
-        return new ShlAccessHistoryResponse(link.getId(), link.getAccessHistory());
+        if ("snapshot".equals(link.getMode()) && link.getS3Key() != null) {
+            // Snapshot: download JWE from S3, decrypt, return raw FHIR Bundle JSON
+            String jwe = s3.downloadJwe(link.getS3Key());
+            String rawKey = fieldEncryption.decrypt(link.getEncryptionKey());
+            return encryption.decryptJwe(jwe, rawKey);
+        } else {
+            // Live mode: build fresh bundle from HealthLake
+            String patientId = crosswalk.resolveHealthLakePatientId(link.getEnterpriseId());
+            byte[] pdfBytes = null;
+            if (link.isIncludePdf()) {
+                pdfBytes = pdfGeneration.generatePatientSummaryPdf(link.getPatientName(), Map.of());
+            }
+            var bundle = bundleBuilder.buildPatientSharedBundle(
+                patientId, link.getSelectedResources(), link.isIncludePdf(), pdfBytes, link.getPatientName());
+            return fhirSerialization.toJson(bundle);
+        }
     }
 
     public ShlCreateResponse create(ShlCreateRequest req, HttpServletRequest httpRequest) {
@@ -126,7 +129,7 @@ public class ShlService {
             throw new IllegalArgumentException("expiresAt must be at most 365 days from now");
         }
 
-        boolean isLive = "LIVE".equalsIgnoreCase(req.mode());
+        boolean isLive = "live".equalsIgnoreCase(req.mode());
 
         if (req.includePdf() && (req.patientName() == null || req.patientName().isBlank())) {
             throw new IllegalArgumentException("patientName is required when includePdf is true");
@@ -182,11 +185,11 @@ public class ShlService {
         auditService.logShlAction(linkId, req.idValue(), ShlAuditAction.LINK_CREATED,
             null, Map.of("mode", link.getMode(), "flag", link.getFlag()), httpRequest);
 
-        return new ShlCreateResponse(linkId, shlinkUri, shlinkUri, expiresAt);
+        return new ShlCreateResponse(linkId, shlinkUri, expiresAt);
     }
 
     public void revoke(ShlRevokeRequest req, HttpServletRequest httpRequest) {
-        var link = linkRepository.findById(req.hsid_uuid())
+        var link = linkRepository.findById(req.linkId())
             .orElseThrow(() -> new NoSuchElementException("Link not found"));
 
         link.setStatus("revoked");
@@ -202,19 +205,22 @@ public class ShlService {
         mongoTemplate.updateFirst(query, update, ShlLinkDocument.class);
     }
 
-    private ShlLinkResponse toResponse(ShlLinkDocument link) {
+    private ShlLinkResponse toResponse(ShlLinkDocument link, boolean includeHistory) {
         String rawKey = fieldEncryption.decrypt(link.getEncryptionKey());
         String shlinkUri = shlinkBuilder.buildShlinkUri(
             link.getId(), link.getFlag(), rawKey,
             link.getExpiresAt().getEpochSecond(), link.getLabel());
 
+        List<AccessRecord> history = includeHistory ? link.getAccessHistory() : null;
+
         return new ShlLinkResponse(
             link.getId(), link.getLabel(),
             link.getMode(), link.getFlag(),
             link.getEffectiveStatus(),
-            shlinkUri, shlinkUri,
+            shlinkUri,
             link.getExpiresAt(), link.getCreatedAt(),
-            link.getSelectedResources(), link.isIncludePdf()
+            link.getSelectedResources(), link.isIncludePdf(),
+            history
         );
     }
 }

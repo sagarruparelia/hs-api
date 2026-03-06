@@ -34,7 +34,7 @@ public class PatientController {
     public PatientSummaryType patientSummary(@Argument String enterpriseId) {
         String patientId = crosswalk.resolveHealthLakePatientId(enterpriseId);
         var bundle = fhirClient.getPatient(patientId);
-        auditService.logFhirQuery(enterpriseId, FhirResourceType.PATIENT, request);
+        auditService.logFhirQuery(enterpriseId, FhirResourceType.Patient, request);
         return transform.transform(bundle);
     }
 }

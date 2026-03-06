@@ -1,18 +1,20 @@
 package com.chanakya.hsapi.shl.dto;
 
+import com.chanakya.hsapi.shl.model.AccessRecord;
+
 import java.time.Instant;
 import java.util.List;
 
 public record ShlLinkResponse(
-    String hsid_uuid,
+    String linkId,
     String label,
     String mode,
     String flag,
     String effectiveStatus,
     String shlinkUrl,
-    String qrData,
     Instant expiresAt,
     Instant createdAt,
     List<String> selectedResources,
-    boolean includePdf
+    boolean includePdf,
+    List<AccessRecord> accessHistory
 ) {}

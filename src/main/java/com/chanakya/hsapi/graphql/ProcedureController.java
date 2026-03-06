@@ -43,7 +43,7 @@ public class ProcedureController {
         var bundle = fhirClient.searchResourcesBySubject("Procedure", patientId);
         var results = transform.transform(bundle);
         results = filterAndSort(results, startDate, endDate, sortOrder, ProcedureType::performedDate);
-        auditService.logFhirQuery(enterpriseId, FhirResourceType.PROCEDURE, request);
+        auditService.logFhirQuery(enterpriseId, FhirResourceType.Procedure, request);
         return results;
     }
 }

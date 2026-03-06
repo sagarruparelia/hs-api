@@ -43,7 +43,7 @@ public class MedicationController {
         var bundle = fhirClient.searchResources("MedicationRequest", patientId);
         var results = transform.transform(bundle);
         results = filterAndSort(results, startDate, endDate, sortOrder, MedicationType::startDate);
-        auditService.logFhirQuery(enterpriseId, FhirResourceType.MEDICATION, request);
+        auditService.logFhirQuery(enterpriseId, FhirResourceType.MedicationRequest, request);
         return results;
     }
 

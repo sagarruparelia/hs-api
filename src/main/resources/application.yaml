@@ -20,6 +20,11 @@ spring:
       enabled: false
     schema:
       locations: classpath:graphql/
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${OAUTH2_ISSUER_URI:}
 
 server:
   port: 8080

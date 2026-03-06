@@ -18,7 +18,7 @@ class ShlServiceTest {
         var link = new ShlLinkDocument();
         link.setStatus(ShlStatus.ACTIVE);
         link.setExpiresAt(Instant.now().plus(1, ChronoUnit.HOURS));
-        assertEquals("ACTIVE", link.getEffectiveStatus());
+        assertEquals("active", link.getEffectiveStatus());
     }
 
     @Test
@@ -26,7 +26,7 @@ class ShlServiceTest {
         var link = new ShlLinkDocument();
         link.setStatus(ShlStatus.ACTIVE);
         link.setExpiresAt(Instant.now().minus(1, ChronoUnit.HOURS));
-        assertEquals("EXPIRED", link.getEffectiveStatus());
+        assertEquals("expired", link.getEffectiveStatus());
     }
 
     @Test
@@ -34,7 +34,7 @@ class ShlServiceTest {
         var link = new ShlLinkDocument();
         link.setStatus(ShlStatus.REVOKED);
         link.setExpiresAt(Instant.now().plus(1, ChronoUnit.HOURS));
-        assertEquals("REVOKED", link.getEffectiveStatus());
+        assertEquals("revoked", link.getEffectiveStatus());
     }
 
     @Test

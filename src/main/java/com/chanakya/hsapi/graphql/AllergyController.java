@@ -43,7 +43,7 @@ public class AllergyController {
         var bundle = fhirClient.searchResources("AllergyIntolerance", patientId);
         var results = transform.transform(bundle);
         results = filterAndSort(results, startDate, endDate, sortOrder, AllergyType::recordedDate);
-        auditService.logFhirQuery(enterpriseId, FhirResourceType.ALLERGY, request);
+        auditService.logFhirQuery(enterpriseId, FhirResourceType.AllergyIntolerance, request);
         return results;
     }
 }

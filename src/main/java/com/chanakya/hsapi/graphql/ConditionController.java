@@ -43,7 +43,7 @@ public class ConditionController {
         var bundle = fhirClient.searchResourcesBySubject("Condition", patientId);
         var results = transform.transform(bundle);
         results = filterAndSort(results, startDate, endDate, sortOrder, ConditionType::onsetDate);
-        auditService.logFhirQuery(enterpriseId, FhirResourceType.CONDITION, request);
+        auditService.logFhirQuery(enterpriseId, FhirResourceType.Condition, request);
         return results;
     }
 }

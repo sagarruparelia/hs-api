@@ -43,7 +43,7 @@ public class AppointmentController {
         var bundle = fhirClient.searchResources("Appointment", patientId);
         var results = transform.transform(bundle);
         results = filterAndSort(results, startDate, endDate, sortOrder, AppointmentType::date);
-        auditService.logFhirQuery(enterpriseId, FhirResourceType.APPOINTMENT, request);
+        auditService.logFhirQuery(enterpriseId, FhirResourceType.Appointment, request);
         return results;
     }
 }

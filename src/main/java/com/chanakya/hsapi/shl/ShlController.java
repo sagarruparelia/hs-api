@@ -3,6 +3,7 @@ package com.chanakya.hsapi.shl;
 import com.chanakya.hsapi.shl.dto.*;
 import com.chanakya.hsapi.shl.service.ShlService;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -31,19 +32,9 @@ public class ShlController {
         return ResponseEntity.ok(shlService.get(request));
     }
 
-    @PostMapping("/preview")
-    public ResponseEntity<ShlLinkResponse> preview(@RequestBody ShlSearchRequest request) {
+    @PostMapping(value = "/preview", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<String> preview(@RequestBody ShlSearchRequest request) {
         return ResponseEntity.ok(shlService.preview(request));
-    }
-
-    @PostMapping("/counts")
-    public ResponseEntity<ShlCountsResponse> counts(@RequestBody ShlSearchRequest request) {
-        return ResponseEntity.ok(shlService.counts(request));
-    }
-
-    @PostMapping("/history")
-    public ResponseEntity<ShlAccessHistoryResponse> history(@RequestBody ShlSearchRequest request) {
-        return ResponseEntity.ok(shlService.history(request));
     }
 
     @PostMapping("/create")

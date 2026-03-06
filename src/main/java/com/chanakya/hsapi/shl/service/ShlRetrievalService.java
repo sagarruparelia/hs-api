@@ -72,13 +72,13 @@ public class ShlRetrievalService {
         }
 
         String effectiveStatus = link.getEffectiveStatus();
-        if ("REVOKED".equals(effectiveStatus)) {
+        if ("revoked".equals(effectiveStatus)) {
             shlService.pushAccessRecord(linkId, AccessRecord.of(recipient, "ACCESS_REVOKED"));
             auditService.logShlAction(linkId, link.getEnterpriseId(), ShlAuditAction.LINK_ACCESS_REVOKED,
                 recipient, null, request);
             return null;
         }
-        if ("EXPIRED".equals(effectiveStatus)) {
+        if ("expired".equals(effectiveStatus)) {
             shlService.pushAccessRecord(linkId, AccessRecord.of(recipient, "ACCESS_EXPIRED"));
             auditService.logShlAction(linkId, link.getEnterpriseId(), ShlAuditAction.LINK_ACCESS_EXPIRED,
                 recipient, null, request);
@@ -110,13 +110,13 @@ public class ShlRetrievalService {
         }
 
         String effectiveStatus = link.getEffectiveStatus();
-        if ("REVOKED".equals(effectiveStatus)) {
+        if ("revoked".equals(effectiveStatus)) {
             shlService.pushAccessRecord(linkId, AccessRecord.of(recipient, "ACCESS_REVOKED"));
             auditService.logShlAction(linkId, link.getEnterpriseId(), ShlAuditAction.LINK_ACCESS_REVOKED,
                 recipient, null, request);
             return new ManifestResponse("no-longer-valid", List.of());
         }
-        if ("EXPIRED".equals(effectiveStatus)) {
+        if ("expired".equals(effectiveStatus)) {
             shlService.pushAccessRecord(linkId, AccessRecord.of(recipient, "ACCESS_EXPIRED"));
             auditService.logShlAction(linkId, link.getEnterpriseId(), ShlAuditAction.LINK_ACCESS_EXPIRED,
                 recipient, null, request);

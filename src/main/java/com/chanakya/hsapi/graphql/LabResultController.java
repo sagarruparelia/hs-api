@@ -43,7 +43,7 @@ public class LabResultController {
         var bundle = fhirClient.searchResourcesBySubject("Observation", patientId);
         var results = transform.transform(bundle);
         results = filterAndSort(results, startDate, endDate, sortOrder, LabResultType::effectiveDate);
-        auditService.logFhirQuery(enterpriseId, FhirResourceType.LAB_RESULT, request);
+        auditService.logFhirQuery(enterpriseId, FhirResourceType.Observation, request);
         return results;
     }
 }

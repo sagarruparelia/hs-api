@@ -1,6 +1,7 @@
 package com.chanakya.hsapi.config;
 
 import com.chanakya.hsapi.auth.ExternalAuthFilter;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -15,9 +16,12 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final ExternalAuthFilter externalAuthFilter;
+    private final String issuerUri;
 
-    public SecurityConfig(ExternalAuthFilter externalAuthFilter) {
+    public SecurityConfig(ExternalAuthFilter externalAuthFilter,
+                          @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri:}") String issuerUri) {
         this.externalAuthFilter = externalAuthFilter;
+        this.issuerUri = issuerUri;
     }
 
     @Bean
@@ -31,7 +35,13 @@ public class SecurityConfig {
                 .requestMatchers("/health", "/actuator/health").permitAll()
                 .requestMatchers("/secure/api/**").authenticated()
                 .anyRequest().denyAll()
-            )
+            );
+
+        if (issuerUri != null && !issuerUri.isBlank()) {
+            http.oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
+        }
+
+        http
             .addFilterBefore(externalAuthFilter, UsernamePasswordAuthenticationFilter.class)
             .httpBasic(basic -> basic.disable())
             .formLogin(form -> form.disable());
