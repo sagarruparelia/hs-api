@@ -19,7 +19,7 @@ aws:
     bucket: healthsafe-shl-ap-south-1
 
 app:
-  encryption-key: dev-encryption-key-32bytes-long!!
+  encryption-key: dev-encryption-key-32bytes-long!
   base-url: http://localhost:8080
   cors:
     allowed-origins: http://localhost:3000

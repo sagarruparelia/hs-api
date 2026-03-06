@@ -7,7 +7,6 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.UUID;
 
 @Service
 public class FhirBundleBuilder {
@@ -86,6 +85,7 @@ public class FhirBundleBuilder {
             if (resourceBundle != null && resourceBundle.hasEntry()) {
                 for (Bundle.BundleEntryComponent entry : resourceBundle.getEntry()) {
                     Resource resource = entry.getResource();
+                    if (resource == null) continue;
                     stripMetaProfile(resource);
                     addEntry(bundle, resource);
                 }
@@ -97,6 +97,7 @@ public class FhirBundleBuilder {
 
     private DocumentReference buildDocumentReference(byte[] pdfBytes, Patient patient, String patientName) {
         DocumentReference docRef = new DocumentReference();
+        docRef.setId(UUID.randomUUID().toString());
         docRef.setStatus(Enumerations.DocumentReferenceStatus.CURRENT);
         docRef.setDate(new Date());
         docRef.setType(new CodeableConcept()
@@ -112,10 +113,11 @@ public class FhirBundleBuilder {
         String patientRef = "Patient/" + patient.getIdElement().getIdPart();
         docRef.setSubject(new Reference().setReference(patientRef));
         docRef.addAuthor(new Reference().setReference(patientRef));
-        docRef.getMeta().addSecurity(new Coding()
-            .setSystem("http://terminology.hl7.org/CodeSystem/v3-ObservationValue")
-            .setCode("PATAST")
-            .setDisplay("patient asserted"));
+        docRef.addSecurityLabel(new CodeableConcept()
+            .addCoding(new Coding()
+                .setSystem("http://terminology.hl7.org/CodeSystem/v3-ObservationValue")
+                .setCode("PATAST")
+                .setDisplay("patient asserted")));
 
         DocumentReference.DocumentReferenceContentComponent content = new DocumentReference.DocumentReferenceContentComponent();
         Attachment attachment = new Attachment();
@@ -128,12 +130,16 @@ public class FhirBundleBuilder {
     }
 
     private void addEntry(Bundle bundle, Resource resource) {
+        String fullUrl = resource.getIdElement().hasIdPart()
+            ? resource.fhirType() + "/" + resource.getIdElement().getIdPart()
+            : "urn:uuid:" + UUID.randomUUID();
         bundle.addEntry()
-            .setFullUrl("urn:uuid:" + UUID.randomUUID())
+            .setFullUrl(fullUrl)
             .setResource(resource);
     }
 
     private void stripMetaProfile(Resource resource) {
+        if (resource == null) return;
         if (resource.hasMeta() && resource.getMeta().hasProfile()) {
             resource.getMeta().getProfile().clear();
         }

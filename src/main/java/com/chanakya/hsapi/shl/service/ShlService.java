@@ -128,6 +128,10 @@ public class ShlService {
 
         boolean isLive = "LIVE".equalsIgnoreCase(req.mode());
 
+        if (req.includePdf() && (req.patientName() == null || req.patientName().isBlank())) {
+            throw new IllegalArgumentException("patientName is required when includePdf is true");
+        }
+
         // Generate link ID and AES key
         String linkId = keyGen.generateLinkId();
         String rawKey = keyGen.generateAesKeyBase64Url();

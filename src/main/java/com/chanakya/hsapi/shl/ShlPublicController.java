@@ -44,8 +44,8 @@ public class ShlPublicController {
     public ResponseEntity<?> postManifest(@PathVariable String id,
                                            @RequestBody Map<String, Object> body,
                                            HttpServletRequest request) {
-        String recipient = body != null ? (String) body.get("recipient") : null;
-        if (recipient == null || recipient.isBlank()) {
+        Object recipientRaw = body != null ? body.get("recipient") : null;
+        if (!(recipientRaw instanceof String recipient) || recipient.isBlank()) {
             return ResponseEntity.badRequest()
                 .body(Map.of("error", "bad_request", "message", "recipient field is required"));
         }
@@ -54,6 +54,9 @@ public class ShlPublicController {
         if (manifest == null) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(Map.of("error", "not_found", "message", "Link not found or no longer valid"));
+        }
+        if ("no-longer-valid".equals(manifest.status())) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(manifest);
         }
 
         return ResponseEntity.ok(manifest);
