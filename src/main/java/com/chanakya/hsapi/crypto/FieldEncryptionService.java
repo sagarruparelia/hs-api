@@ -22,10 +22,9 @@ public class FieldEncryptionService {
             return;
         }
         byte[] keyBytes = encryptionKey.getBytes(StandardCharsets.UTF_8);
-        if (keyBytes.length < 16) {
-            keyBytes = Arrays.copyOf(keyBytes, 32);
-        } else if (keyBytes.length > 32) {
-            keyBytes = Arrays.copyOf(keyBytes, 32);
+        if (keyBytes.length != 16 && keyBytes.length != 24 && keyBytes.length != 32) {
+            throw new IllegalArgumentException(
+                "ENCRYPTION_KEY must be exactly 16, 24, or 32 bytes (got " + keyBytes.length + ")");
         }
         this.secretKey = new SecretKeySpec(keyBytes, "AES");
     }

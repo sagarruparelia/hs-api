@@ -13,10 +13,10 @@ public final class ShlFlag {
     }
 
     public static boolean isSnapshot(String flag) {
-        return flag != null && flag.contains(U);
+        return U.equals(flag);
     }
 
     public static boolean isLive(String flag) {
-        return flag != null && flag.contains(L);
+        return L.equals(flag);
     }
 }

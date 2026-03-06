@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.UUID;
 
 @Service
 public class FhirBundleBuilder {
@@ -56,7 +57,8 @@ public class FhirBundleBuilder {
             for (Bundle.BundleEntryComponent entry : patientBundle.getEntry()) {
                 if (entry.getResource() instanceof Patient p) {
                     patient = p;
-                    bundle.addEntry().setResource(p);
+                    stripMetaProfile(p);
+                    addEntry(bundle, p);
                     break;
                 }
             }
@@ -65,7 +67,7 @@ public class FhirBundleBuilder {
         // DocumentReference (0..1, if includePdf=true)
         if (includePdf && pdfBytes != null && patient != null) {
             DocumentReference docRef = buildDocumentReference(pdfBytes, patient, patientName);
-            bundle.addEntry().setResource(docRef);
+            addEntry(bundle, docRef);
         }
 
         // Discrete FHIR resources (parallel fetch)
@@ -83,7 +85,9 @@ public class FhirBundleBuilder {
             Bundle resourceBundle = future.join();
             if (resourceBundle != null && resourceBundle.hasEntry()) {
                 for (Bundle.BundleEntryComponent entry : resourceBundle.getEntry()) {
-                    bundle.addEntry().setResource(entry.getResource());
+                    Resource resource = entry.getResource();
+                    stripMetaProfile(resource);
+                    addEntry(bundle, resource);
                 }
             }
         }
@@ -94,6 +98,7 @@ public class FhirBundleBuilder {
     private DocumentReference buildDocumentReference(byte[] pdfBytes, Patient patient, String patientName) {
         DocumentReference docRef = new DocumentReference();
         docRef.setStatus(Enumerations.DocumentReferenceStatus.CURRENT);
+        docRef.setDate(new Date());
         docRef.setType(new CodeableConcept()
             .addCoding(new Coding()
                 .setSystem("http://loinc.org")
@@ -101,15 +106,16 @@ public class FhirBundleBuilder {
                 .setDisplay("Patient summary Document")));
         docRef.addCategory(new CodeableConcept()
             .addCoding(new Coding()
-                .setSystem("http://hl7.org/fhir/us/core/CodeSystem/patient-shared-category")
+                .setSystem("https://cms.gov/fhir/CodeSystem/patient-shared-category")
                 .setCode("patient-shared")
                 .setDisplay("Patient Shared")));
-        docRef.addAuthor(new Reference().setReference("Patient/" + patient.getIdElement().getIdPart()));
-        docRef.addSecurityLabel(new CodeableConcept()
-            .addCoding(new Coding()
-                .setSystem("http://terminology.hl7.org/CodeSystem/v3-Confidentiality")
-                .setCode("PATAST")
-                .setDisplay("patient asserted")));
+        String patientRef = "Patient/" + patient.getIdElement().getIdPart();
+        docRef.setSubject(new Reference().setReference(patientRef));
+        docRef.addAuthor(new Reference().setReference(patientRef));
+        docRef.getMeta().addSecurity(new Coding()
+            .setSystem("http://terminology.hl7.org/CodeSystem/v3-ObservationValue")
+            .setCode("PATAST")
+            .setDisplay("patient asserted"));
 
         DocumentReference.DocumentReferenceContentComponent content = new DocumentReference.DocumentReferenceContentComponent();
         Attachment attachment = new Attachment();
@@ -119,5 +125,17 @@ public class FhirBundleBuilder {
         docRef.addContent(content);
 
         return docRef;
+    }
+
+    private void addEntry(Bundle bundle, Resource resource) {
+        bundle.addEntry()
+            .setFullUrl("urn:uuid:" + UUID.randomUUID())
+            .setResource(resource);
+    }
+
+    private void stripMetaProfile(Resource resource) {
+        if (resource.hasMeta() && resource.getMeta().hasProfile()) {
+            resource.getMeta().getProfile().clear();
+        }
     }
 }

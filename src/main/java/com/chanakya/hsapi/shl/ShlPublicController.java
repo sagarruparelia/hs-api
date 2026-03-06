@@ -41,17 +41,19 @@ public class ShlPublicController {
     }
 
     @PostMapping("/{id}")
-    public ResponseEntity<ManifestResponse> postManifest(@PathVariable String id,
-                                                          @RequestBody Map<String, Object> body,
-                                                          HttpServletRequest request) {
+    public ResponseEntity<?> postManifest(@PathVariable String id,
+                                           @RequestBody Map<String, Object> body,
+                                           HttpServletRequest request) {
         String recipient = body != null ? (String) body.get("recipient") : null;
         if (recipient == null || recipient.isBlank()) {
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.badRequest()
+                .body(Map.of("error", "bad_request", "message", "recipient field is required"));
         }
 
         ManifestResponse manifest = retrievalService.retrieveManifest(id, recipient, request);
         if (manifest == null) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(Map.of("error", "not_found", "message", "Link not found or no longer valid"));
         }
 
         return ResponseEntity.ok(manifest);

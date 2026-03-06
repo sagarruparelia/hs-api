@@ -7,6 +7,7 @@ import com.chanakya.hsapi.crypto.FieldEncryptionService;
 import com.chanakya.hsapi.crypto.KeyGenerationService;
 import com.chanakya.hsapi.fhir.FhirBundleBuilder;
 import com.chanakya.hsapi.fhir.FhirSerializationService;
+import com.chanakya.hsapi.pdf.PdfGenerationService;
 import com.chanakya.hsapi.shl.dto.*;
 import com.chanakya.hsapi.shl.model.*;
 import com.chanakya.hsapi.shl.repository.ShlLinkRepository;
@@ -22,6 +23,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -44,13 +46,14 @@ public class ShlService {
     private final ShlinkBuilder shlinkBuilder;
     private final AuditService auditService;
     private final MongoTemplate mongoTemplate;
+    private final PdfGenerationService pdfGeneration;
 
     public ShlService(ShlLinkRepository linkRepository, KeyGenerationService keyGen,
                       EncryptionService encryption, FieldEncryptionService fieldEncryption,
                       FhirBundleBuilder bundleBuilder, FhirSerializationService fhirSerialization,
                       S3PayloadService s3, PatientCrosswalkService crosswalk,
                       ShlinkBuilder shlinkBuilder, AuditService auditService,
-                      MongoTemplate mongoTemplate) {
+                      MongoTemplate mongoTemplate, PdfGenerationService pdfGeneration) {
         this.linkRepository = linkRepository;
         this.keyGen = keyGen;
         this.encryption = encryption;
@@ -62,6 +65,7 @@ public class ShlService {
         this.shlinkBuilder = shlinkBuilder;
         this.auditService = auditService;
         this.mongoTemplate = mongoTemplate;
+        this.pdfGeneration = pdfGeneration;
     }
 
     public List<ShlLinkResponse> search(ShlSearchRequest req) {
@@ -108,7 +112,12 @@ public class ShlService {
         if (req.expiresAt() == null || req.expiresAt().isBlank()) {
             throw new IllegalArgumentException("expiresAt is required");
         }
-        Instant expiresAt = Instant.parse(req.expiresAt());
+        Instant expiresAt;
+        try {
+            expiresAt = Instant.parse(req.expiresAt());
+        } catch (DateTimeParseException e) {
+            throw new IllegalArgumentException("expiresAt must be a valid ISO-8601 timestamp");
+        }
         Instant now = Instant.now();
         if (expiresAt.isBefore(now.plus(MIN_EXPIRY))) {
             throw new IllegalArgumentException("expiresAt must be at least 5 minutes from now");
@@ -129,9 +138,15 @@ public class ShlService {
 
         String s3Key = null;
         if (!isLive) {
+            // Generate PDF if requested
+            byte[] pdfBytes = null;
+            if (req.includePdf()) {
+                pdfBytes = pdfGeneration.generatePatientSummaryPdf(req.patientName(), Map.of());
+            }
+
             // Snapshot mode: build bundle, encrypt, upload to S3
             var bundle = bundleBuilder.buildPatientSharedBundle(
-                patientId, req.selectedResources(), req.includePdf(), null, req.patientName());
+                patientId, req.selectedResources(), req.includePdf(), pdfBytes, req.patientName());
             String bundleJson = fhirSerialization.toJson(bundle);
             String jwe = encryption.encryptToJwe(bundleJson, rawKey);
             s3Key = s3.buildS3Key(req.idValue(), linkId);
@@ -174,7 +189,7 @@ public class ShlService {
         linkRepository.save(link);
 
         auditService.logShlAction(link.getId(), link.getEnterpriseId(), ShlAuditAction.LINK_REVOKED,
-            null, null, httpRequest);
+            null, Map.of(), httpRequest);
     }
 
     public void pushAccessRecord(String linkId, AccessRecord record) {
