@@ -9,6 +9,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.mongodb.MongoDBContainer;
 
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -77,5 +78,47 @@ class SecurityBoundaryTest {
     void unknownPath_returnsForbidden() throws Exception {
         mockMvc.perform(get("/unknown"))
             .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void publicPost_withoutRecipient_returns400() throws Exception {
+        mockMvc.perform(post("/shl/some-id")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"other":"field"}"""))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void publicPost_nonexistentId_returns404() throws Exception {
+        mockMvc.perform(post("/shl/nonexistent-id")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"recipient":"Dr. Smith"}"""))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void cors_publicEndpoint_allowsAllOrigins() throws Exception {
+        mockMvc.perform(options("/shl/some-id")
+                .header("Origin", "https://any-origin.example.com")
+                .header("Access-Control-Request-Method", "GET"))
+            .andExpect(status().isOk())
+            .andExpect(header().string("Access-Control-Allow-Origin", "*"));
+    }
+
+    @Test
+    void cors_securedEndpoint_restrictsOrigins() throws Exception {
+        // A random unknown origin should be blocked by CORS on secured endpoints
+        mockMvc.perform(options("/secure/api/v1/shl/search")
+                .header("Origin", "https://malicious.example.com")
+                .header("Access-Control-Request-Method", "POST"))
+            .andExpect(result -> {
+                String corsHeader = result.getResponse().getHeader("Access-Control-Allow-Origin");
+                // If the origin is not in the allowed list, Spring will either not include
+                // the CORS header or return 403
+                assertTrue(corsHeader == null || !corsHeader.equals("https://malicious.example.com"),
+                    "Secured endpoints must restrict CORS to allowed origins");
+            });
     }
 }
