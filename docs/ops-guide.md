@@ -63,16 +63,16 @@ the JVM rather than a fixed pool.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `MONGODB_URI` | Yes (prod) | `mongodb://localhost:27017/hsapi` | MongoDB connection string |
+| `MONGODB_URI` | Yes | `mongodb://localhost:27017/hsapi` | MongoDB connection string (include credentials for prod) |
 | `MONGODB_DATABASE` | No | `hsapi` | MongoDB database name |
-| `AWS_REGION` | No | `ap-south-1` | AWS region for all services |
-| `HEALTHLAKE_ENDPOINT` | Yes | -- | HealthLake datastore FHIR R4 endpoint URL |
-| `S3_BUCKET` | Yes | -- | S3 bucket name for JWE payload storage |
-| `ENCRYPTION_KEY` | Yes | -- | 32-byte string for AES-GCM field encryption |
-| `APP_BASE_URL` | Yes (prod) | `http://localhost:8080` | Public base URL used in SHLink URIs |
-| `CORS_ALLOWED_ORIGINS` | No | `http://localhost:3000` | Comma-separated allowed CORS origins |
-| `OAUTH2_ISSUER_URI` | No | -- | OAuth2 JWT issuer URI (optional JWT validation) |
-| `SPRING_PROFILES_ACTIVE` | No | -- | Active profiles (e.g., `dev`, `prod`) |
+| `AWS_REGION` | No | `us-east-1` | AWS region for HealthLake, S3, and credential resolution |
+| `HEALTHLAKE_ENDPOINT` | Yes | — | HealthLake datastore FHIR R4 endpoint URL (e.g., `https://healthlake.us-east-1.amazonaws.com/datastore/{id}/r4/`) |
+| `S3_BUCKET` | Yes | — | S3 bucket name for encrypted JWE payload storage |
+| `ENCRYPTION_KEY` | Yes | — | Exactly 32-byte string for AES-GCM field encryption of SHL keys at rest |
+| `APP_BASE_URL` | Yes | `http://localhost:8080` | Public base URL embedded in SHLink URIs. Must be externally reachable (e.g., `https://api.example.com`) |
+| `CORS_ALLOWED_ORIGINS` | No | `http://localhost:3000` | Comma-separated allowed CORS origins for `/secure/api/**` endpoints |
+| `OAUTH2_ISSUER_URI` | No | — | OAuth2 JWT issuer URI for optional token validation. Leave empty to skip JWT validation |
+| `SPRING_PROFILES_ACTIVE` | No | — | Active Spring profiles (e.g., `dev`, `prod`) |
 
 ### Secrets management
 
@@ -374,7 +374,7 @@ mongosh "$MONGODB_URI" --eval "db.stats()"
 # Test HealthLake connectivity (requires AWS credentials)
 aws healthlake describe-fhir-datastore \
   --datastore-id <DATASTORE_ID> \
-  --region ap-south-1
+  --region us-east-1
 
 # Test a FHIR search
 curl -H "Authorization: Bearer $(aws healthlake ...)" \

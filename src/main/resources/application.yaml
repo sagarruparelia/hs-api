@@ -39,7 +39,7 @@ management:
       show-details: never
 
 aws:
-  region: ${AWS_REGION:ap-south-1}
+  region: ${AWS_REGION:us-east-1}
   healthlake:
     datastore-endpoint: ${HEALTHLAKE_ENDPOINT:}
   s3:

@@ -42,8 +42,8 @@ The application starts on port **8080** (`http://localhost:8080`).
 The integration environment uses the same local MongoDB instance but connects to
 live AWS services:
 
-- **HealthLake**: FHIR R4 data store in `ap-south-1`
-- **S3**: Bucket `healthsafe-shl-ap-south-1` for encrypted SHL snapshots
+- **HealthLake**: FHIR R4 data store in `us-east-1` (configured via `HEALTHLAKE_ENDPOINT` env var)
+- **S3**: Encrypted SHL snapshots (configured via `S3_BUCKET` env var, default: `healthsafe-shl-us-east-1`)
 
 ### Prerequisites
 
@@ -52,7 +52,7 @@ Before running tests in either environment, ensure:
 - **Docker** is running (required for MongoDB via Compose and for Testcontainers)
 - **AWS credentials** are configured — either through the AWS CLI (`aws configure`)
   or environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
-  `AWS_REGION=ap-south-1`)
+  `AWS_REGION=us-east-1`)
 - **Java 25** is installed and `JAVA_HOME` points to the JDK 25 installation
 - The Maven wrapper (`./mvnw`) is present in the project root
 
@@ -101,7 +101,7 @@ db.patient_crosswalk.findOne({ enterpriseId: "test-patient-1" });
 
 ### HealthLake
 
-The HealthLake data store in `ap-south-1` must contain FHIR R4 Patient resources
+The HealthLake data store in `us-east-1` must contain FHIR R4 Patient resources
 and associated clinical resources (Conditions, Medications, Observations, etc.)
 for the `healthLakePatientId` values referenced in the crosswalk collection.
 

@@ -51,7 +51,7 @@ docker compose version
 
 ### AWS CLI v2
 
-Must be configured with credentials for HealthLake and S3 in `ap-south-1`. The application uses `DefaultCredentialsProvider` (supports env vars, `~/.aws/credentials`, IAM roles, SSO).
+Must be configured with credentials for HealthLake and S3 in `us-east-1`. The application uses `DefaultCredentialsProvider` (supports env vars, `~/.aws/credentials`, IAM roles, SSO).
 
 ```bash
 aws --version       # aws-cli/2.x.x ...
@@ -84,17 +84,18 @@ aws sts get-caller-identity
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
-The `dev` profile (`application-dev.yaml`) configures:
+The `dev` profile (`application-dev.yaml`) provides defaults that can be overridden with environment variables:
 
-| Setting | Dev Value |
-|---------|-----------|
-| MongoDB URI | `mongodb://localhost:27017/healthsafe` |
-| GraphiQL | **enabled** |
-| HealthLake Endpoint | `https://healthlake.ap-south-1.amazonaws.com/datastore/8beccfc1f6ca1e8419ae9f29e5a46be5/r4/` |
-| S3 Bucket | `healthsafe-shl-ap-south-1` |
-| Encryption Key | `dev-encryption-key-32bytes-long!` |
-| Base URL | `http://localhost:8080` |
-| CORS Origins | `http://localhost:3000` |
+| Setting | Env Variable | Dev Default |
+|---------|-------------|-------------|
+| MongoDB URI | `MONGODB_URI` | `mongodb://localhost:27017/healthsafe` |
+| GraphiQL | _(always enabled in dev)_ | **enabled** |
+| HealthLake Endpoint | `HEALTHLAKE_ENDPOINT` | `https://healthlake.us-east-1.amazonaws.com/datastore/8beccfc1f6ca1e8419ae9f29e5a46be5/r4/` |
+| S3 Bucket | `S3_BUCKET` | `healthsafe-shl-us-east-1` |
+| Encryption Key | `ENCRYPTION_KEY` | `dev-encryption-key-32bytes-long!` |
+| Base URL | `APP_BASE_URL` | `http://localhost:8080` |
+| CORS Origins | `CORS_ALLOWED_ORIGINS` | `http://localhost:3000` |
+| AWS Region | `AWS_REGION` | `us-east-1` |
 
 Once running: health check at `http://localhost:8080/actuator/health`, GraphiQL at `http://localhost:8080/graphiql`.
 
@@ -126,15 +127,18 @@ java -jar target/hs-api-0.0.1-SNAPSHOT.jar --spring.profiles.active=dev  # Run J
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `MONGODB_URI` | No | `mongodb://localhost:27017/hsapi` | MongoDB connection string |
-| `MONGODB_DATABASE` | No | `hsapi` | Database name |
-| `AWS_REGION` | No | `ap-south-1` | AWS region |
-| `HEALTHLAKE_ENDPOINT` | Yes (prod) | _(empty)_ | HealthLake datastore endpoint URL |
-| `S3_BUCKET` | Yes (prod) | _(empty)_ | S3 bucket for JWE payloads |
-| `ENCRYPTION_KEY` | Yes | _(empty)_ | 32-byte key for AES-GCM field encryption |
-| `APP_BASE_URL` | No | `http://localhost:8080` | Base URL for SHLink URIs |
-| `CORS_ALLOWED_ORIGINS` | No | `http://localhost:3000` | Comma-separated allowed origins |
-| `OAUTH2_ISSUER_URI` | No | _(empty)_ | OAuth2 JWT issuer URI (optional) |
+| `MONGODB_URI` | Yes (prod) | `mongodb://localhost:27017/hsapi` | MongoDB connection string. Dev profile overrides to `mongodb://localhost:27017/healthsafe` |
+| `MONGODB_DATABASE` | No | `hsapi` | MongoDB database name. Dev profile overrides to `healthsafe` |
+| `AWS_REGION` | No | `us-east-1` | AWS region for HealthLake, S3, and credential resolution |
+| `HEALTHLAKE_ENDPOINT` | Yes | _(none)_ | HealthLake datastore FHIR R4 endpoint URL (e.g., `https://healthlake.us-east-1.amazonaws.com/datastore/{id}/r4/`) |
+| `S3_BUCKET` | Yes | _(none)_ | S3 bucket name for encrypted JWE payload storage (e.g., `healthsafe-shl-us-east-1`) |
+| `ENCRYPTION_KEY` | Yes | _(none)_ | Exactly 32-byte string for AES-GCM field encryption of SHL keys at rest. Dev profile uses `dev-encryption-key-32bytes-long!` |
+| `APP_BASE_URL` | Yes (prod) | `http://localhost:8080` | Public base URL embedded in SHLink URIs (e.g., `https://api.example.com`). Must be the externally reachable URL |
+| `CORS_ALLOWED_ORIGINS` | No | `http://localhost:3000` | Comma-separated allowed CORS origins for `/secure/api/**` endpoints |
+| `OAUTH2_ISSUER_URI` | No | _(none)_ | OAuth2 JWT issuer URI for optional token validation. Leave empty to skip JWT validation |
+| `SPRING_PROFILES_ACTIVE` | No | _(none)_ | Active Spring profiles. Set to `dev` for local development (enables GraphiQL, detailed health, dev defaults) |
+
+**Source**: All variables are defined in `src/main/resources/application.yaml` with dev overrides in `application-dev.yaml`. See [ops-guide.md](ops-guide.md) for secrets management guidance.
 
 ---
 
