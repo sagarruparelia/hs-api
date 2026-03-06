@@ -1,0 +1,742 @@
+openapi: 3.1.0
+info:
+  title: HS-API - SMART Health Links API
+  description: |
+    REST API for creating, managing, and sharing SMART Health Links (SHL).
+    Secured endpoints require an `X-Consumer-Id` header for authentication.
+    A GraphQL endpoint is also available for flexible querying — use introspection
+    for schema discovery.
+  version: 1.0.0
+  contact:
+    name: HS-API Team
+
+servers:
+  - url: http://localhost:8080
+    description: Development
+
+tags:
+  - name: SHL Secured
+    description: Authenticated SHL management endpoints (all POST, require X-Consumer-Id)
+  - name: SHL Public
+    description: Publicly accessible SHL retrieval endpoints (no auth)
+  - name: Health
+    description: Application health check
+  - name: GraphQL
+    description: GraphQL query endpoint
+
+security: []
+
+paths:
+  # ---------------------------------------------------------------------------
+  # Secured SHL endpoints
+  # ---------------------------------------------------------------------------
+  /secure/api/v1/shl/search:
+    post:
+      operationId: searchShlLinks
+      tags: [SHL Secured]
+      summary: Search SHL links
+      description: |
+        Search for SHL links by enterprise identifier. Optionally narrow results
+        to a specific link by providing `linkId`.
+      security:
+        - consumerIdAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShlSearchRequest'
+            example:
+              idType: ENTERPRISE_ID
+              idValue: "E-123456"
+      responses:
+        '200':
+          description: Matching SHL links
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ShlLinkResponse'
+              example:
+                - linkId: "abc-def-001"
+                  label: "My Health Summary"
+                  mode: snapshot
+                  flag: U
+                  effectiveStatus: active
+                  shlinkUrl: "shlink:/eyJ1cmwiOiJodHRwczovL..."
+                  expiresAt: "2026-04-01T00:00:00Z"
+                  createdAt: "2026-03-01T12:00:00Z"
+                  selectedResources:
+                    - Patient
+                    - Condition
+                  includePdf: true
+                  accessHistory:
+                    - recipient: "Dr. Smith"
+                      action: ACCESSED
+                      timestamp: "2026-03-02T09:30:00Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /secure/api/v1/shl/get:
+    post:
+      operationId: getShlLink
+      tags: [SHL Secured]
+      summary: Get single SHL link
+      description: Retrieve a single SHL link by enterprise identifier and link ID.
+      security:
+        - consumerIdAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShlSearchRequest'
+            example:
+              idType: ENTERPRISE_ID
+              idValue: "E-123456"
+              linkId: "abc-def-001"
+      responses:
+        '200':
+          description: The requested SHL link
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShlLinkResponse'
+              example:
+                linkId: "abc-def-001"
+                label: "My Health Summary"
+                mode: snapshot
+                flag: U
+                effectiveStatus: active
+                shlinkUrl: "shlink:/eyJ1cmwiOiJodHRwczovL..."
+                expiresAt: "2026-04-01T00:00:00Z"
+                createdAt: "2026-03-01T12:00:00Z"
+                selectedResources:
+                  - Patient
+                  - Condition
+                includePdf: true
+                accessHistory:
+                  - recipient: "Dr. Smith"
+                    action: ACCESSED
+                    timestamp: "2026-03-02T09:30:00Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /secure/api/v1/shl/preview:
+    post:
+      operationId: previewShlContent
+      tags: [SHL Secured]
+      summary: Preview decrypted content
+      description: |
+        Retrieve the decrypted FHIR Bundle JSON for a given SHL link. Returns
+        the raw JSON string of the FHIR R4 Bundle resource.
+      security:
+        - consumerIdAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShlSearchRequest'
+            example:
+              idType: ENTERPRISE_ID
+              idValue: "E-123456"
+              linkId: "abc-def-001"
+      responses:
+        '200':
+          description: Raw FHIR Bundle JSON
+          content:
+            application/json:
+              schema:
+                type: string
+              example: '{"resourceType":"Bundle","type":"collection","entry":[{"resource":{"resourceType":"Patient","id":"pat-001","name":[{"family":"Doe","given":["John"]}]}}]}'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /secure/api/v1/shl/create:
+    post:
+      operationId: createShlLink
+      tags: [SHL Secured]
+      summary: Create new SHL link
+      description: |
+        Create a new SMART Health Link for the given patient. The link bundles
+        selected FHIR resources (and optionally a PDF) into an encrypted,
+        shareable URL.
+      security:
+        - consumerIdAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShlCreateRequest'
+            example:
+              idType: ENTERPRISE_ID
+              idValue: "E-123456"
+              label: "My Health Summary"
+              expiresAt: "2026-04-01T00:00:00Z"
+              selectedResources:
+                - Patient
+                - Condition
+              includePdf: true
+              patientName: "John Doe"
+              mode: SNAPSHOT
+      responses:
+        '200':
+          description: SHL link created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShlCreateResponse'
+              example:
+                linkId: "abc-def-001"
+                shlinkUrl: "shlink:/eyJ1cmwiOiJodHRwczovL2V4YW1wbGUuY29tL3NobC9hYmMtZGVmLTAwMSIsImZsYWciOiJVIiwiZXhwIjoxNzQzNDY1NjAwLCJrZXkiOiJhYmNkZWYxMjM0NTY3ODkwIn0"
+                expiresAt: "2026-04-01T00:00:00Z"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /secure/api/v1/shl/revoke:
+    post:
+      operationId: revokeShlLink
+      tags: [SHL Secured]
+      summary: Revoke SHL link
+      description: |
+        Revoke an active SHL link, making it permanently inaccessible to
+        recipients. This action cannot be undone.
+      security:
+        - consumerIdAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShlRevokeRequest'
+            example:
+              idType: ENTERPRISE_ID
+              idValue: "E-123456"
+              linkId: "abc-def-001"
+      responses:
+        '200':
+          description: SHL link revoked successfully (empty body)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ---------------------------------------------------------------------------
+  # Public SHL endpoints
+  # ---------------------------------------------------------------------------
+  /shl/{id}:
+    get:
+      operationId: retrieveSnapshot
+      tags: [SHL Public]
+      summary: Retrieve snapshot (U flag)
+      description: |
+        Retrieve a snapshot SHL by its ID. The response is a JWE compact
+        serialization containing the encrypted FHIR Bundle. This endpoint is
+        used for links with the `U` (unsigned/unprotected) flag.
+      parameters:
+        - $ref: '#/components/parameters/ShlId'
+        - name: recipient
+          in: query
+          required: true
+          description: Name or identifier of the recipient accessing the link
+          schema:
+            type: string
+          example: "Dr. Smith"
+      responses:
+        '200':
+          description: JWE compact serialization of the encrypted FHIR Bundle
+          content:
+            application/jose:
+              schema:
+                type: string
+              example: "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..IV.ciphertext.tag"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      operationId: retrieveManifest
+      tags: [SHL Public]
+      summary: Retrieve manifest (L flag)
+      description: |
+        Retrieve the SHL manifest for links with the `L` (long) flag. Returns
+        a manifest containing one or more files as embedded JWE content.
+      parameters:
+        - $ref: '#/components/parameters/ShlId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - recipient
+              properties:
+                recipient:
+                  type: string
+                  description: Name or identifier of the recipient accessing the link
+            example:
+              recipient: "Dr. Smith"
+      responses:
+        '200':
+          description: SHL manifest with embedded encrypted files
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManifestResponse'
+              example:
+                status: can-change
+                files:
+                  - contentType: "application/fhir+json"
+                    embedded: "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..IV.ciphertext.tag"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    options:
+      operationId: corsPreflight
+      tags: [SHL Public]
+      summary: CORS preflight
+      description: Handles CORS preflight requests for the public SHL endpoint.
+      parameters:
+        - $ref: '#/components/parameters/ShlId'
+      responses:
+        '200':
+          description: CORS preflight response with appropriate headers
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+              example: "*"
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+              example: "GET, POST, OPTIONS"
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+              example: "Content-Type"
+
+  # ---------------------------------------------------------------------------
+  # Health check
+  # ---------------------------------------------------------------------------
+  /health:
+    get:
+      operationId: healthCheck
+      tags: [Health]
+      summary: Health check
+      description: Returns the application health status.
+      responses:
+        '200':
+          description: Application is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                properties:
+                  status:
+                    type: string
+                    enum: [UP]
+              example:
+                status: UP
+
+  # ---------------------------------------------------------------------------
+  # GraphQL
+  # ---------------------------------------------------------------------------
+  /graphql:
+    post:
+      operationId: graphqlQuery
+      tags: [GraphQL]
+      summary: GraphQL endpoint
+      description: |
+        Execute a GraphQL query or mutation. This is an opaque POST endpoint
+        accepting standard GraphQL request bodies. Use GraphQL introspection
+        (`{ __schema { types { name } } }`) for full schema discovery.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - query
+              properties:
+                query:
+                  type: string
+                  description: GraphQL query or mutation string
+                variables:
+                  type: object
+                  additionalProperties: true
+                  description: Variables for the GraphQL operation
+            example:
+              query: "{ __schema { types { name } } }"
+              variables: {}
+      responses:
+        '200':
+          description: GraphQL response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        message:
+                          type: string
+                        locations:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              line:
+                                type: integer
+                              column:
+                                type: integer
+                        path:
+                          type: array
+                          items:
+                            type: string
+              example:
+                data:
+                  __schema:
+                    types:
+                      - name: "Query"
+                      - name: "ShlLink"
+
+# =============================================================================
+# Components
+# =============================================================================
+components:
+
+  # ---------------------------------------------------------------------------
+  # Security schemes
+  # ---------------------------------------------------------------------------
+  securitySchemes:
+    consumerIdAuth:
+      type: apiKey
+      in: header
+      name: X-Consumer-Id
+      description: Consumer identifier for authenticated access to secured endpoints
+
+  # ---------------------------------------------------------------------------
+  # Parameters
+  # ---------------------------------------------------------------------------
+  parameters:
+    ShlId:
+      name: id
+      in: path
+      required: true
+      description: Unique SHL link identifier
+      schema:
+        type: string
+      example: "abc-def-001"
+
+  # ---------------------------------------------------------------------------
+  # Reusable responses
+  # ---------------------------------------------------------------------------
+  responses:
+    BadRequest:
+      description: Bad request — invalid or missing parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "Bad Request"
+            message: "Missing required field: recipient"
+            timestamp: "2026-03-06T10:00:00Z"
+            path: "/shl/abc-def-001"
+
+    Unauthorized:
+      description: Unauthorized — missing or invalid X-Consumer-Id header
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "Unauthorized"
+            message: "Missing or invalid X-Consumer-Id header"
+            timestamp: "2026-03-06T10:00:00Z"
+            path: "/secure/api/v1/shl/search"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "Not Found"
+            message: "SHL link not found: abc-def-001"
+            timestamp: "2026-03-06T10:00:00Z"
+            path: "/secure/api/v1/shl/get"
+
+  # ---------------------------------------------------------------------------
+  # Schemas
+  # ---------------------------------------------------------------------------
+  schemas:
+
+    # --- Request schemas ---
+
+    ShlSearchRequest:
+      type: object
+      required:
+        - idType
+        - idValue
+      properties:
+        idType:
+          type: string
+          enum: [ENTERPRISE_ID]
+          description: Type of patient identifier
+        idValue:
+          type: string
+          description: Patient identifier value
+        linkId:
+          type: string
+          description: Optional SHL link ID to narrow the search
+
+    ShlCreateRequest:
+      type: object
+      required:
+        - idType
+        - idValue
+        - label
+        - expiresAt
+        - selectedResources
+        - includePdf
+        - patientName
+        - mode
+      properties:
+        idType:
+          type: string
+          enum: [ENTERPRISE_ID]
+          description: Type of patient identifier
+        idValue:
+          type: string
+          description: Patient identifier value
+        label:
+          type: string
+          description: Human-readable label for the SHL link
+        expiresAt:
+          type: string
+          format: date-time
+          description: Expiration timestamp in ISO-8601 format
+        selectedResources:
+          type: array
+          items:
+            type: string
+            enum:
+              - Patient
+              - MedicationRequest
+              - Immunization
+              - AllergyIntolerance
+              - Condition
+              - Procedure
+              - Observation
+              - Coverage
+              - ExplanationOfBenefit
+              - Appointment
+              - CareTeam
+          description: FHIR R4 resource types to include in the link
+        includePdf:
+          type: boolean
+          description: Whether to include a PDF rendering of the health summary
+        patientName:
+          type: string
+          description: Patient display name (used for PDF generation and labels)
+        mode:
+          type: string
+          enum: [SNAPSHOT, LIVE]
+          description: |
+            SNAPSHOT captures data at creation time. LIVE re-fetches from
+            HealthLake on each access.
+
+    ShlRevokeRequest:
+      type: object
+      required:
+        - idType
+        - idValue
+        - linkId
+      properties:
+        idType:
+          type: string
+          enum: [ENTERPRISE_ID]
+          description: Type of patient identifier
+        idValue:
+          type: string
+          description: Patient identifier value
+        linkId:
+          type: string
+          description: SHL link ID to revoke
+
+    # --- Response schemas ---
+
+    ShlCreateResponse:
+      type: object
+      required:
+        - linkId
+        - shlinkUrl
+        - expiresAt
+      properties:
+        linkId:
+          type: string
+          description: Unique identifier for the created SHL link
+        shlinkUrl:
+          type: string
+          description: Full shlink:/ URI for sharing
+        expiresAt:
+          type: string
+          format: date-time
+          description: Expiration timestamp of the created link
+
+    ShlLinkResponse:
+      type: object
+      required:
+        - linkId
+        - label
+        - mode
+        - flag
+        - effectiveStatus
+        - shlinkUrl
+        - expiresAt
+        - createdAt
+        - selectedResources
+        - includePdf
+        - accessHistory
+      properties:
+        linkId:
+          type: string
+          description: Unique identifier for the SHL link
+        label:
+          type: string
+          description: Human-readable label
+        mode:
+          type: string
+          enum: [snapshot, live]
+          description: Data retrieval mode (lowercase in API responses)
+        flag:
+          type: string
+          enum: [U, L]
+          description: |
+            SHL flag — U for direct content retrieval (snapshot), L for
+            manifest-based retrieval
+        effectiveStatus:
+          type: string
+          enum: [active, expired, revoked]
+          description: Current effective status of the link
+        shlinkUrl:
+          type: string
+          description: Full shlink:/ URI for sharing
+        expiresAt:
+          type: string
+          format: date-time
+          description: Expiration timestamp
+        createdAt:
+          type: string
+          format: date-time
+          description: Creation timestamp
+        selectedResources:
+          type: array
+          items:
+            type: string
+          description: FHIR R4 resource types included in the link
+        includePdf:
+          type: boolean
+          description: Whether a PDF rendering is included
+        accessHistory:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccessRecord'
+          description: History of recipient access events
+
+    AccessRecord:
+      type: object
+      required:
+        - recipient
+        - action
+        - timestamp
+      properties:
+        recipient:
+          type: string
+          description: Name or identifier of the recipient
+        action:
+          type: string
+          enum: [ACCESSED, ACCESS_REVOKED, ACCESS_EXPIRED]
+          description: Type of access event
+        timestamp:
+          type: string
+          format: date-time
+          description: When the access event occurred
+
+    ManifestResponse:
+      type: object
+      required:
+        - status
+        - files
+      properties:
+        status:
+          type: string
+          enum: [can-change, no-longer-valid]
+          description: |
+            Indicates whether the data may change on subsequent requests
+            (can-change) or the link is no longer valid (no-longer-valid)
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/ManifestFile'
+          description: List of encrypted files in the manifest
+
+    ManifestFile:
+      type: object
+      required:
+        - contentType
+        - embedded
+      properties:
+        contentType:
+          type: string
+          enum: [application/fhir+json]
+          description: MIME type of the embedded content
+        embedded:
+          type: string
+          description: JWE compact serialization of the encrypted content
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+        - timestamp
+        - path
+      properties:
+        error:
+          type: string
+          description: HTTP error status text
+        message:
+          type: string
+          description: Human-readable error description
+        timestamp:
+          type: string
+          format: date-time
+          description: When the error occurred
+        path:
+          type: string
+          description: Request path that caused the error
