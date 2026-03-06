@@ -61,14 +61,4 @@ public class ShlPublicController {
 
         return ResponseEntity.ok(manifest);
     }
-
-    @RequestMapping(value = "/{id}", method = RequestMethod.OPTIONS)
-    public ResponseEntity<Void> options(@PathVariable String id) {
-        return ResponseEntity.ok()
-            .header("Access-Control-Allow-Origin", "*")
-            .header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-            .header("Access-Control-Allow-Headers", "Content-Type")
-            .header("Access-Control-Max-Age", "3600")
-            .build();
-    }
 }
