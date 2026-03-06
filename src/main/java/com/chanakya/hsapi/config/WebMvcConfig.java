@@ -35,6 +35,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
         secureConfig.setAllowedHeaders(List.of("Content-Type", "X-Consumer-Id", "X-Request-Id"));
         secureConfig.setMaxAge(3600L);
         source.registerCorsConfiguration("/secure/api/**", secureConfig);
+        source.registerCorsConfiguration("/graphql", secureConfig);
 
         return source;
     }

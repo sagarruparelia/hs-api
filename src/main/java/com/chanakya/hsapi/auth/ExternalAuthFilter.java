@@ -22,7 +22,7 @@ public class ExternalAuthFilter extends OncePerRequestFilter {
                                     FilterChain filterChain) throws ServletException, IOException {
         String path = request.getRequestURI();
 
-        if (!path.startsWith("/secure/api/")) {
+        if (!path.startsWith("/secure/api/") && !path.equals("/graphql")) {
             filterChain.doFilter(request, response);
             return;
         }

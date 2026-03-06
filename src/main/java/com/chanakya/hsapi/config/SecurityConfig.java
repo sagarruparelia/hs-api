@@ -33,7 +33,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/shl/**").permitAll()
                 .requestMatchers("/health", "/actuator/health").permitAll()
-                .requestMatchers("/secure/api/**").authenticated()
+                .requestMatchers("/secure/api/**", "/graphql").authenticated()
                 .anyRequest().denyAll()
             );
 

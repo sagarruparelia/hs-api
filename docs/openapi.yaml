@@ -3,26 +3,43 @@ info:
   title: HS-API - SMART Health Links API
   description: |
     REST API for creating, managing, and sharing SMART Health Links (SHL).
-    Secured endpoints require an `X-Consumer-Id` header for authentication.
-    A GraphQL endpoint is also available for flexible querying — use introspection
-    for schema discovery.
+
+    ## Authentication
+
+    Secured endpoints use **OAuth2 Client Credentials** flow. Obtain an access
+    token from the token endpoint using your `client_id`, `client_secret`, and
+    `scope`, then pass it as a Bearer token in the `Authorization` header.
+
+    The API gateway validates the token, establishes mTLS with the backend ALB,
+    and injects the `X-Consumer-Id` header identifying the authenticated consumer.
+
+    ### Proxy paths (production)
+    | Internal path | Proxy path |
+    |---|---|
+    | `/secure/api/v1/shl/*` | `/api/consumer/hs/shl/1.0.0/*` |
+    | `/graphql` | `/api/consumer/hs/graph/1.0.0` |
+
+    A GraphQL endpoint is also available for flexible FHIR resource querying —
+    use introspection for schema discovery.
   version: 1.0.0
   contact:
     name: HS-API Team
 
 servers:
   - url: http://localhost:8080
-    description: Development
+    description: Development (direct backend)
+  - url: https://api.example.com
+    description: Production (via API gateway — use proxy paths above)
 
 tags:
   - name: SHL Secured
-    description: Authenticated SHL management endpoints (all POST, require X-Consumer-Id)
+    description: Authenticated SHL management endpoints (all POST, require OAuth2 client credentials)
   - name: SHL Public
     description: Publicly accessible SHL retrieval endpoints (no auth)
   - name: Health
     description: Application health check
   - name: GraphQL
-    description: GraphQL query endpoint
+    description: Authenticated GraphQL endpoint for FHIR resource queries
 
 security: []
 
@@ -39,7 +56,7 @@ paths:
         Search for SHL links by enterprise identifier. Optionally narrow results
         to a specific link by providing `linkId`.
       security:
-        - consumerIdAuth: []
+        - oauth2ClientCredentials: []
       requestBody:
         required: true
         content:
@@ -85,7 +102,7 @@ paths:
       summary: Get single SHL link
       description: Retrieve a single SHL link by enterprise identifier and link ID.
       security:
-        - consumerIdAuth: []
+        - oauth2ClientCredentials: []
       requestBody:
         required: true
         content:
@@ -134,7 +151,7 @@ paths:
         Retrieve the decrypted FHIR Bundle JSON for a given SHL link. Returns
         the raw JSON string of the FHIR R4 Bundle resource.
       security:
-        - consumerIdAuth: []
+        - oauth2ClientCredentials: []
       requestBody:
         required: true
         content:
@@ -168,7 +185,7 @@ paths:
         selected FHIR resources (and optionally a PDF) into an encrypted,
         shareable URL.
       security:
-        - consumerIdAuth: []
+        - oauth2ClientCredentials: []
       requestBody:
         required: true
         content:
@@ -211,7 +228,7 @@ paths:
         Revoke an active SHL link, making it permanently inaccessible to
         recipients. This action cannot be undone.
       security:
-        - consumerIdAuth: []
+        - oauth2ClientCredentials: []
       requestBody:
         required: true
         content:
@@ -361,9 +378,12 @@ paths:
       operationId: graphqlQuery
       tags: [GraphQL]
       summary: GraphQL endpoint
+      security:
+        - oauth2ClientCredentials: []
       description: |
-        Execute a GraphQL query or mutation. This is an opaque POST endpoint
-        accepting standard GraphQL request bodies. Use GraphQL introspection
+        Execute a GraphQL query or mutation against FHIR resources. Requires
+        OAuth2 authentication. This is an opaque POST endpoint accepting standard
+        GraphQL request bodies. Use GraphQL introspection
         (`{ __schema { types { name } } }`) for full schema discovery.
       requestBody:
         required: true
@@ -421,6 +441,8 @@ paths:
                     types:
                       - name: "Query"
                       - name: "ShlLink"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
 # =============================================================================
 # Components
@@ -431,11 +453,16 @@ components:
   # Security schemes
   # ---------------------------------------------------------------------------
   securitySchemes:
-    consumerIdAuth:
-      type: apiKey
-      in: header
-      name: X-Consumer-Id
-      description: Consumer identifier for authenticated access to secured endpoints
+    oauth2ClientCredentials:
+      type: oauth2
+      description: |
+        OAuth2 Client Credentials flow via API gateway. The gateway validates
+        the token, establishes mTLS with the backend, and injects the
+        `X-Consumer-Id` header.
+      flows:
+        clientCredentials:
+          tokenUrl: https://api.example.com/oauth2/token
+          scopes: {}
 
   # ---------------------------------------------------------------------------
   # Parameters
@@ -467,14 +494,14 @@ components:
             path: "/shl/abc-def-001"
 
     Unauthorized:
-      description: Unauthorized — missing or invalid X-Consumer-Id header
+      description: Unauthorized — missing or invalid OAuth2 token (gateway) or X-Consumer-Id header (backend)
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           example:
             error: "Unauthorized"
-            message: "Missing or invalid X-Consumer-Id header"
+            message: "X-Consumer-Id header is required"
             timestamp: "2026-03-06T10:00:00Z"
             path: "/secure/api/v1/shl/search"
 

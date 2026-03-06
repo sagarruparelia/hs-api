@@ -108,6 +108,25 @@ class SecurityBoundaryTest {
     }
 
     @Test
+    void graphql_withoutConsumerId_returns401() throws Exception {
+        mockMvc.perform(post("/graphql")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"query":"{ __schema { types { name } } }"}"""))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void graphql_withConsumerId_isAccessible() throws Exception {
+        mockMvc.perform(post("/graphql")
+                .header("X-Consumer-Id", "test-consumer")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"query":"{ __schema { types { name } } }"}"""))
+            .andExpect(status().isOk());
+    }
+
+    @Test
     void cors_securedEndpoint_restrictsOrigins() throws Exception {
         // A random unknown origin should be blocked by CORS on secured endpoints
         mockMvc.perform(options("/secure/api/v1/shl/search")
