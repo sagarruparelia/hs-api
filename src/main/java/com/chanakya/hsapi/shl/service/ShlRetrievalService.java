@@ -143,7 +143,7 @@ public class ShlRetrievalService {
         auditService.logShlAction(linkId, link.getEnterpriseId(), ShlAuditAction.LINK_ACCESSED,
             recipient, Map.of("contentHash", sha256(jwe)), request);
 
-        var file = new ManifestResponse.ManifestFile("application/jose", jwe);
+        var file = new ManifestResponse.ManifestFile("application/fhir+json", jwe);
         return new ManifestResponse("can-change", List.of(file));
     }
 
