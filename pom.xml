@@ -98,6 +98,21 @@
             <groupId>ca.uhn.hapi.fhir</groupId>
             <artifactId>hapi-fhir-structures-r4</artifactId>
             <version>${hapi-fhir.version}</version>
+            <exclusions>
+                <!-- CVE-2023-4043: DoS via BigDecimal in unmaintained GlassFish JSON provider.
+                     Replaced by Eclipse Parsson below. -->
+                <exclusion>
+                    <groupId>org.glassfish</groupId>
+                    <artifactId>jakarta.json</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <!-- Eclipse Parsson: maintained Jakarta JSON Processing provider (fixes CVE-2023-4043) -->
+        <dependency>
+            <groupId>org.eclipse.parsson</groupId>
+            <artifactId>parsson</artifactId>
+            <version>1.1.7</version>
         </dependency>
 
         <!-- AWS SDK v2 -->
