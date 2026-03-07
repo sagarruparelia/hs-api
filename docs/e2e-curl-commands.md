@@ -12,7 +12,7 @@ Requires: Spring Boot app running with `dev` profile, MongoDB, AWS HealthLake.
 docker compose up -d mongo
 
 # Start the app
-./gradlew bootRun --args='--spring.profiles.active=dev'
+./mvnw spring-boot:run
 ```
 
 ---

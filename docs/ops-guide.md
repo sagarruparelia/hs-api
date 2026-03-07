@@ -29,7 +29,7 @@ target/hs-api-0.0.1-SNAPSHOT.jar
 ### Run the JAR locally
 
 ```bash
-java -jar target/hs-api-0.0.1-SNAPSHOT.jar --spring.profiles.active=prod
+java -jar target/hs-api-0.0.1-SNAPSHOT.jar
 ```
 
 ### Docker build
@@ -71,8 +71,9 @@ the JVM rather than a fixed pool.
 | `ENCRYPTION_KEY` | Yes | — | Exactly 32-byte string for AES-GCM field encryption of SHL keys at rest |
 | `APP_BASE_URL` | Yes | `http://localhost:8080` | Public base URL embedded in SHLink URIs. Must be externally reachable (e.g., `https://api.example.com`) |
 | `CORS_ALLOWED_ORIGINS` | No | `http://localhost:3000` | Comma-separated allowed CORS origins for `/secure/api/**` endpoints |
-| `OAUTH2_ISSUER_URI` | No | — | OAuth2 JWT issuer URI for optional token validation. Leave empty to skip JWT validation |
-| `SPRING_PROFILES_ACTIVE` | No | — | Active Spring profiles (e.g., `dev`, `prod`) |
+| `OAUTH2_ISSUER_URI` | No | — | OAuth2 JWT issuer URI. When set, enables JWT bearer token validation on secured endpoints by auto-fetching JWKS keys from `{issuerUri}/.well-known/openid-configuration`. Optional — primary auth is via API gateway (`X-Consumer-Id` header). Set for double-validation at the app layer; leave empty to rely on gateway auth only |
+| `GRAPHIQL_ENABLED` | No | `false` | Enable GraphiQL interactive query editor at `/graphiql` |
+| `HEALTH_DETAILS` | No | `never` | Health endpoint detail level (`never`, `always`, `when-authorized`) |
 
 ### Secrets management
 
@@ -236,9 +237,9 @@ Configure alerts for the following conditions:
 
 ### Indexes
 
-Indexes are created programmatically on startup via `MongoConfig`. Automatic index
-creation is disabled (`auto-index-creation: false`); indexes are managed in code,
-not by Spring Data.
+Indexes are declared via `@CompoundIndex` and `@Indexed` annotations on entity classes.
+Auto-index creation is enabled (`auto-index-creation: true`); Spring Data MongoDB
+creates indexes on startup based on entity annotations.
 
 | Collection | Index Name | Fields | Notes |
 |---|---|---|---|

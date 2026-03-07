@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class PatientCrosswalkIntegrationTest {
 
     @ServiceConnection
-    static MongoDBContainer mongoDBContainer = new MongoDBContainer("mongo:7");
+    static MongoDBContainer mongoDBContainer = new MongoDBContainer("mongo:8");
 
     static {
         mongoDBContainer.start();

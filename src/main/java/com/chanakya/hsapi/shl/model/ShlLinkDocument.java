@@ -4,6 +4,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.index.CompoundIndex;
+import org.springframework.data.mongodb.core.index.CompoundIndexes;
+import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 import org.springframework.data.mongodb.core.mapping.Field;
 
@@ -15,6 +18,7 @@ import java.util.List;
 @Setter
 @NoArgsConstructor
 @Document("shl_links")
+@CompoundIndex(name = "idx_enterpriseId_status", def = "{'enterpriseId': 1, 'status': 1}")
 public class ShlLinkDocument {
 
     @Id
@@ -27,6 +31,7 @@ public class ShlLinkDocument {
     private List<String> selectedResources;
     private boolean includePdf;
     private String patientName;
+    @Indexed(name = "idx_expiresAt")
     private Instant expiresAt;
     private String status;
     private String s3Key;

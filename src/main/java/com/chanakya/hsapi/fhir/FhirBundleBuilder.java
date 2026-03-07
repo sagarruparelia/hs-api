@@ -37,27 +37,14 @@ public class FhirBundleBuilder {
         bundle.setType(Bundle.BundleType.COLLECTION);
         bundle.setTimestamp(new Date());
 
-        // Patient (required, 1..1)
         Bundle patientBundle = fhirClient.getPatient(healthLakePatientId);
-        Patient patient = null;
-        if (patientBundle.hasEntry()) {
-            for (Bundle.BundleEntryComponent entry : patientBundle.getEntry()) {
-                if (entry.getResource() instanceof Patient p) {
-                    patient = p;
-                    stripMetaProfile(p);
-                    addEntry(bundle, p);
-                    break;
-                }
-            }
-        }
+        Patient patient = extractPatient(patientBundle, bundle);
 
-        // DocumentReference (0..1, if includePdf=true)
         if (includePdf && pdfBytes != null && patient != null) {
             DocumentReference docRef = buildDocumentReference(pdfBytes, patient, patientName);
             addEntry(bundle, docRef);
         }
 
-        // Discrete FHIR resources (parallel fetch)
         List<CompletableFuture<Bundle>> futures = selectedResources.stream()
             .filter(rt -> !"PATIENT".equalsIgnoreCase(rt) && !"Patient".equals(rt))
             .map(rt -> CompletableFuture.supplyAsync(() -> {
@@ -67,20 +54,31 @@ public class FhirBundleBuilder {
             .toList();
 
         CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)).join();
-
-        for (var future : futures) {
-            Bundle resourceBundle = future.join();
-            if (resourceBundle != null && resourceBundle.hasEntry()) {
-                for (Bundle.BundleEntryComponent entry : resourceBundle.getEntry()) {
-                    Resource resource = entry.getResource();
-                    if (resource == null) continue;
-                    stripMetaProfile(resource);
-                    addEntry(bundle, resource);
-                }
-            }
-        }
+        futures.forEach(future -> addBundleEntries(bundle, future.join()));
 
         return bundle;
+    }
+
+    private Patient extractPatient(Bundle patientBundle, Bundle targetBundle) {
+        if (!patientBundle.hasEntry()) return null;
+        for (Bundle.BundleEntryComponent entry : patientBundle.getEntry()) {
+            if (entry.getResource() instanceof Patient p) {
+                stripMetaProfile(p);
+                addEntry(targetBundle, p);
+                return p;
+            }
+        }
+        return null;
+    }
+
+    private void addBundleEntries(Bundle target, Bundle source) {
+        if (source == null || !source.hasEntry()) return;
+        for (Bundle.BundleEntryComponent entry : source.getEntry()) {
+            Resource resource = entry.getResource();
+            if (resource == null) continue;
+            stripMetaProfile(resource);
+            addEntry(target, resource);
+        }
     }
 
     private DocumentReference buildDocumentReference(byte[] pdfBytes, Patient patient, String patientName) {

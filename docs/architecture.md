@@ -577,9 +577,10 @@ Bundle (type: collection, timestamp: required)
 
 ### Step 1: Project Foundation
 - `pom.xml` — full dependency overhaul
-- `application.yaml` + `application-dev.yaml` — profiles
+- `application.yaml` — env-variable-driven configuration
+- `.env.example` — template for local environment variables
 - `config/SecurityConfig.java` — filter chain
-- `config/MongoConfig.java` — indexes for all 4 collections
+- `config/MongoConfig.java` — type mapper configuration
 - `config/AwsConfig.java` — S3Client + Apache5HttpClient
 - `config/JacksonConfig.java` — Jackson 3 customization (Jackson 2 via HAPI transitive, no dual-stack config)
 - `config/WebMvcConfig.java` — CORS, security headers

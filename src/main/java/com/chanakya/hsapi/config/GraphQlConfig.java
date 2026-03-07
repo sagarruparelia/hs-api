@@ -9,13 +9,16 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class GraphQlConfig {
 
+    private static final int MAX_QUERY_COMPLEXITY = 200;
+    private static final int MAX_QUERY_DEPTH = 10;
+
     @Bean
     public Instrumentation maxQueryComplexityInstrumentation() {
-        return new MaxQueryComplexityInstrumentation(200);
+        return new MaxQueryComplexityInstrumentation(MAX_QUERY_COMPLEXITY);
     }
 
     @Bean
     public Instrumentation maxQueryDepthInstrumentation() {
-        return new MaxQueryDepthInstrumentation(10);
+        return new MaxQueryDepthInstrumentation(MAX_QUERY_DEPTH);
     }
 }

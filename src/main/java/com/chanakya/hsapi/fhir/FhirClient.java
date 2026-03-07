@@ -24,6 +24,9 @@ import java.nio.charset.StandardCharsets;
 @Service
 public class FhirClient {
 
+    private static final int HTTP_OK = 200;
+    private static final int FHIR_DEFAULT_PAGE_SIZE = 100;
+
     private final FhirSerializationService fhirSerialization;
     private final SdkHttpClient httpClient;
     private final AwsCredentialsProvider credentialsProvider;
@@ -72,7 +75,7 @@ public class FhirClient {
                 .readAllBytes();
             String body = new String(bodyBytes, StandardCharsets.UTF_8);
 
-            if (status != 200) {
+            if (status != HTTP_OK) {
                 log.error("HealthLake error: status={}, body={}", status, body);
                 throw new RuntimeException("HealthLake request failed with status " + status);
             }
@@ -84,12 +87,12 @@ public class FhirClient {
     }
 
     public Bundle searchResources(String resourceType, String patientId) {
-        String path = "/" + resourceType + "?patient=" + patientId + "&_count=100";
+        String path = "/" + resourceType + "?patient=" + patientId + "&_count=" + FHIR_DEFAULT_PAGE_SIZE;
         return fhirSerialization.fromJson(executeSignedGet(path), Bundle.class);
     }
 
     public Bundle searchResourcesBySubject(String resourceType, String patientId) {
-        String path = "/" + resourceType + "?subject=" + patientId + "&_count=100";
+        String path = "/" + resourceType + "?subject=" + patientId + "&_count=" + FHIR_DEFAULT_PAGE_SIZE;
         return fhirSerialization.fromJson(executeSignedGet(path), Bundle.class);
     }
 

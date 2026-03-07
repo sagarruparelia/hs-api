@@ -18,7 +18,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class SecurityBoundaryTest {
 
     @ServiceConnection
-    static MongoDBContainer mongoDBContainer = new MongoDBContainer("mongo:7");
+    static MongoDBContainer mongoDBContainer = new MongoDBContainer("mongo:8");
 
     static {
         mongoDBContainer.start();

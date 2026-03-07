@@ -4,6 +4,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 @Getter
@@ -14,6 +15,7 @@ public class PatientCrosswalkDocument {
 
     @Id
     private String id;
+    @Indexed(name = "idx_enterpriseId_unique", unique = true)
     private String enterpriseId;
     private String healthLakePatientId;
 

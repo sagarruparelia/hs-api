@@ -80,24 +80,17 @@ docker compose up -d
 # 3. Verify AWS credentials
 aws sts get-caller-identity
 
-# 4. Run with dev profile
-./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+# 4. Copy and configure environment variables
+cp .env.example .env
+# Edit .env with your local values
+
+# 5. Run the application
+./mvnw spring-boot:run
 ```
 
-The `dev` profile (`application-dev.yaml`) provides defaults that can be overridden with environment variables:
+All configuration is driven by environment variables (see `.env.example`). Copy it to `.env` and set values for your local environment.
 
-| Setting | Env Variable | Dev Default |
-|---------|-------------|-------------|
-| MongoDB URI | `MONGODB_URI` | `mongodb://localhost:27017/healthsafe` |
-| GraphiQL | _(always enabled in dev)_ | **enabled** |
-| HealthLake Endpoint | `HEALTHLAKE_ENDPOINT` | `https://healthlake.us-east-1.amazonaws.com/datastore/8beccfc1f6ca1e8419ae9f29e5a46be5/r4/` |
-| S3 Bucket | `S3_BUCKET` | `healthsafe-shl-us-east-1` |
-| Encryption Key | `ENCRYPTION_KEY` | `dev-encryption-key-32bytes-long!` |
-| Base URL | `APP_BASE_URL` | `http://localhost:8080` |
-| CORS Origins | `CORS_ALLOWED_ORIGINS` | `http://localhost:3000` |
-| AWS Region | `AWS_REGION` | `us-east-1` |
-
-Once running: health check at `http://localhost:8080/actuator/health`, GraphiQL at `http://localhost:8080/graphiql`.
+Once running: health check at `http://localhost:8080/actuator/health`. Set `GRAPHIQL_ENABLED=true` to enable GraphiQL at `http://localhost:8080/graphiql`.
 
 Example GraphQL query to test in GraphiQL:
 ```graphql
@@ -118,7 +111,7 @@ query {
 ./mvnw compile                                     # Compile only
 ./mvnw test                                        # Run tests (requires Docker)
 ./mvnw package -DskipTests                         # Package as JAR
-java -jar target/hs-api-0.0.1-SNAPSHOT.jar --spring.profiles.active=dev  # Run JAR
+java -jar target/hs-api-0.0.1-SNAPSHOT.jar         # Run JAR
 ```
 
 ---
@@ -127,18 +120,19 @@ java -jar target/hs-api-0.0.1-SNAPSHOT.jar --spring.profiles.active=dev  # Run J
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `MONGODB_URI` | Yes (prod) | `mongodb://localhost:27017/hsapi` | MongoDB connection string. Dev profile overrides to `mongodb://localhost:27017/healthsafe` |
-| `MONGODB_DATABASE` | No | `hsapi` | MongoDB database name. Dev profile overrides to `healthsafe` |
+| `MONGODB_URI` | Yes (prod) | `mongodb://localhost:27017/hsapi` | MongoDB connection string |
+| `MONGODB_DATABASE` | No | `hsapi` | MongoDB database name |
 | `AWS_REGION` | No | `us-east-1` | AWS region for HealthLake, S3, and credential resolution |
 | `HEALTHLAKE_ENDPOINT` | Yes | _(none)_ | HealthLake datastore FHIR R4 endpoint URL (e.g., `https://healthlake.us-east-1.amazonaws.com/datastore/{id}/r4/`) |
 | `S3_BUCKET` | Yes | _(none)_ | S3 bucket name for encrypted JWE payload storage (e.g., `healthsafe-shl-us-east-1`) |
-| `ENCRYPTION_KEY` | Yes | _(none)_ | Exactly 32-byte string for AES-GCM field encryption of SHL keys at rest. Dev profile uses `dev-encryption-key-32bytes-long!` |
+| `ENCRYPTION_KEY` | Yes | _(none)_ | Exactly 32-byte string for AES-GCM field encryption of SHL keys at rest |
 | `APP_BASE_URL` | Yes (prod) | `http://localhost:8080` | Public base URL embedded in SHLink URIs (e.g., `https://api.example.com`). Must be the externally reachable URL |
 | `CORS_ALLOWED_ORIGINS` | No | `http://localhost:3000` | Comma-separated allowed CORS origins for `/secure/api/**` endpoints |
-| `OAUTH2_ISSUER_URI` | No | _(none)_ | OAuth2 JWT issuer URI for optional token validation. Leave empty to skip JWT validation |
-| `SPRING_PROFILES_ACTIVE` | No | _(none)_ | Active Spring profiles. Set to `dev` for local development (enables GraphiQL, detailed health, dev defaults) |
+| `OAUTH2_ISSUER_URI` | No | _(none)_ | OAuth2 JWT issuer URI (e.g., `https://idp.example.com/oauth2`). When set, enables JWT bearer token validation on `/secure/api/**` and `/graphql` by auto-fetching JWKS keys from `{issuerUri}/.well-known/openid-configuration`. This is optional — primary authentication is handled by the API gateway via `X-Consumer-Id` header (`ExternalAuthFilter`). Set this only if you need double-validation of tokens directly at the app layer. Leave empty to rely solely on gateway authentication |
+| `GRAPHIQL_ENABLED` | No | `false` | Enable GraphiQL interactive query editor at `/graphiql` |
+| `HEALTH_DETAILS` | No | `never` | Health endpoint detail level (`never`, `always`, `when-authorized`) |
 
-**Source**: All variables are defined in `src/main/resources/application.yaml` with dev overrides in `application-dev.yaml`. See [ops-guide.md](ops-guide.md) for secrets management guidance.
+**Source**: All variables are defined in `src/main/resources/application.yaml`. See `.env.example` for a template and [ops-guide.md](ops-guide.md) for secrets management guidance.
 
 ---
 
@@ -695,7 +689,7 @@ class ShlServiceTest {
 class PatientCrosswalkIntegrationTest {
     @Container
     @ServiceConnection
-    static MongoDBContainer mongoContainer = new MongoDBContainer("mongo:7");
+    static MongoDBContainer mongoContainer = new MongoDBContainer("mongo:8");
 
     @Autowired
     private PatientCrosswalkRepository repository;
@@ -786,7 +780,7 @@ See [data-dictionary.md](data-dictionary.md) for complete schemas.
 
 ### Indexes
 
-Created programmatically in `MongoConfig` on `ApplicationReadyEvent` (auto-index-creation is disabled):
+Declared via `@CompoundIndex` and `@Indexed` annotations on entity classes (auto-index-creation is enabled):
 
 | Collection | Index Name | Fields | Unique |
 |------------|-----------|--------|--------|
@@ -800,7 +794,7 @@ Created programmatically in `MongoConfig` on `ApplicationReadyEvent` (auto-index
 ### Configuration Notes
 
 - `_class` field disabled via `DefaultMongoTypeMapper(null)` in `MongoConfig`. This prevents Spring Data from writing `_class` discriminator fields into documents.
-- Auto-index creation is disabled (`spring.data.mongodb.auto-index-creation: false`). Indexes are managed explicitly in `MongoConfig.createIndexes()` on `ApplicationReadyEvent`.
+- Auto-index creation is enabled (`spring.data.mongodb.auto-index-creation: true`). Indexes are declared via `@CompoundIndex`, `@Indexed` annotations on entity classes.
 - Imperative `MongoRepository` (not reactive) -- virtual threads provide equivalent I/O scalability without reactive complexity.
 - MongoDB driver 5.6.x is virtual-thread-safe by default.
 

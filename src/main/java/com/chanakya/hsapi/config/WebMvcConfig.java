@@ -13,6 +13,8 @@ import java.util.List;
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
 
+    private static final long CORS_MAX_AGE_SECONDS = 3600L;
+
     @Value("${app.cors.allowed-origins}")
     private String allowedOrigins;
 
@@ -25,7 +27,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
         shlConfig.addAllowedOrigin("*");
         shlConfig.setAllowedMethods(List.of("GET", "POST", "OPTIONS"));
         shlConfig.addAllowedHeader("*");
-        shlConfig.setMaxAge(3600L);
+        shlConfig.setMaxAge(CORS_MAX_AGE_SECONDS);
         source.registerCorsConfiguration("/shl/**", shlConfig);
 
         // Secured API endpoints — restricted CORS
@@ -33,7 +35,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
         secureConfig.setAllowedOrigins(List.of(allowedOrigins.split(",")));
         secureConfig.setAllowedMethods(List.of("POST"));
         secureConfig.setAllowedHeaders(List.of("Content-Type", "X-Consumer-Id", "X-Request-Id"));
-        secureConfig.setMaxAge(3600L);
+        secureConfig.setMaxAge(CORS_MAX_AGE_SECONDS);
         source.registerCorsConfiguration("/secure/api/**", secureConfig);
         source.registerCorsConfiguration("/graphql", secureConfig);
 

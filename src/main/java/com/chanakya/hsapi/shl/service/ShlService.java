@@ -35,6 +35,7 @@ public class ShlService {
 
     private static final Duration MIN_EXPIRY = Duration.ofMinutes(5);
     private static final Duration MAX_EXPIRY = Duration.ofDays(365);
+    private static final int MAX_ACCESS_HISTORY = 50;
 
     private final ShlLinkRepository linkRepository;
     private final KeyGenerationService keyGen;
@@ -182,7 +183,7 @@ public class ShlService {
 
     public void pushAccessRecord(String linkId, AccessRecord record) {
         Query query = Query.query(Criteria.where("_id").is(linkId));
-        Update update = new Update().push("accessHistory").slice(-50).each(record);
+        Update update = new Update().push("accessHistory").slice(-MAX_ACCESS_HISTORY).each(record);
         mongoTemplate.updateFirst(query, update, ShlLinkDocument.class);
     }
 

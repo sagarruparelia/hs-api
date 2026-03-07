@@ -9,7 +9,7 @@ spring:
     database: ${MONGODB_DATABASE:hsapi}
   data:
     mongodb:
-      auto-index-creation: false
+      auto-index-creation: true
   thymeleaf:
     prefix: classpath:/templates/
     suffix: .html
@@ -17,7 +17,7 @@ spring:
     cache: true
   graphql:
     graphiql:
-      enabled: false
+      enabled: ${GRAPHIQL_ENABLED:false}
     schema:
       locations: classpath:graphql/
   security:
@@ -36,7 +36,7 @@ management:
         include: health,info
   endpoint:
     health:
-      show-details: never
+      show-details: ${HEALTH_DETAILS:never}
 
 aws:
   region: ${AWS_REGION:us-east-1}
