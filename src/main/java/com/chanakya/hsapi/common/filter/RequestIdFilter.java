@@ -39,7 +39,7 @@ public class RequestIdFilter extends OncePerRequestFilter {
         MDC.put("origin", request.getHeader("Origin"));
         MDC.put("remoteAddr", request.getRemoteAddr());
         try {
-            log.debug("Incoming request: {} {} origin={} remoteAddr={}",
+            log.info("Incoming request: {} {} origin={} remoteAddr={}",
                     request.getMethod(), request.getRequestURI(),
                     request.getHeader("Origin"), request.getRemoteAddr());
             filterChain.doFilter(request, response);
