@@ -5,10 +5,9 @@ import java.time.Instant;
 public record ErrorResponse(
     String error,
     String message,
-    Instant timestamp,
-    String path
+    Instant timestamp
 ) {
-    public static ErrorResponse of(String error, String message, String path) {
-        return new ErrorResponse(error, message, Instant.now(), path);
+    public static ErrorResponse of(String error, String message) {
+        return new ErrorResponse(error, message, Instant.now());
     }
 }

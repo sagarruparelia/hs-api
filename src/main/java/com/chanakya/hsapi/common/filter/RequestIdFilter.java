@@ -19,7 +19,7 @@ import java.util.regex.Pattern;
 public class RequestIdFilter extends OncePerRequestFilter {
 
     private static final String REQUEST_ID_HEADER = "X-Request-Id";
-    public static final String REQUEST_ID_ATTR = REQUEST_ID_ATTR;
+    public static final String REQUEST_ID_ATTR = "requestId";
     private static final Pattern VALID_REQUEST_ID = Pattern.compile("^[a-zA-Z0-9\\-]{1,64}$");
 
     @Override
