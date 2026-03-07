@@ -63,14 +63,12 @@ public class ShlRetrievalService {
             return new ManifestResponse("no-longer-valid", List.of());
         }
 
-        byte[] pdfBytes = null;
-        if (link.isIncludePdf()) {
-            pdfBytes = pdfGeneration.generatePatientSummaryPdf(link.getPatientName(), Map.of());
-        }
-
         String patientId = crosswalk.resolveHealthLakePatientId(link.getEnterpriseId());
-        var bundle = bundleBuilder.buildPatientSharedBundle(
-            patientId, link.getSelectedResources(), link.isIncludePdf(), pdfBytes, link.getPatientName());
+        var bundle = bundleBuilder.buildPatientSharedBundle(patientId, link.getSelectedResources());
+        if (link.isIncludePdf()) {
+            byte[] pdfBytes = pdfGeneration.generatePatientSummaryPdf(bundle, link.getPatientName());
+            bundleBuilder.addPdfDocumentReference(bundle, pdfBytes, link.getPatientName());
+        }
         String bundleJson = fhirSerialization.toJson(bundle);
 
         String rawKey = fieldEncryption.decrypt(link.getEncryptionKey());

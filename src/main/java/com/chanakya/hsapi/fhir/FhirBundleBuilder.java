@@ -16,21 +16,13 @@ public class FhirBundleBuilder {
     private final FhirClient fhirClient;
 
     public Bundle buildPatientSharedBundle(String healthLakePatientId,
-                                           List<String> selectedResources,
-                                           boolean includePdf,
-                                           byte[] pdfBytes,
-                                           String patientName) {
+                                           List<String> selectedResources) {
         Bundle bundle = new Bundle();
         bundle.setType(Bundle.BundleType.COLLECTION);
         bundle.setTimestamp(new Date());
 
         Bundle patientBundle = fhirClient.getPatient(healthLakePatientId);
-        Patient patient = extractPatient(patientBundle, bundle);
-
-        if (includePdf && pdfBytes != null && patient != null) {
-            DocumentReference docRef = buildDocumentReference(pdfBytes, patient, patientName);
-            addEntry(bundle, docRef);
-        }
+        extractPatient(patientBundle, bundle);
 
         List<CompletableFuture<Bundle>> futures = selectedResources.stream()
             .filter(rt -> !"PATIENT".equalsIgnoreCase(rt) && !"Patient".equals(rt))
@@ -43,6 +35,22 @@ public class FhirBundleBuilder {
         futures.forEach(future -> addBundleEntries(bundle, future.join()));
 
         return bundle;
+    }
+
+    public void addPdfDocumentReference(Bundle bundle, byte[] pdfBytes, String patientName) {
+        if (pdfBytes == null || bundle == null) return;
+
+        Patient patient = null;
+        for (Bundle.BundleEntryComponent entry : bundle.getEntry()) {
+            if (entry.getResource() instanceof Patient p) {
+                patient = p;
+                break;
+            }
+        }
+        if (patient == null) return;
+
+        DocumentReference docRef = buildDocumentReference(pdfBytes, patient, patientName);
+        addEntry(bundle, docRef);
     }
 
     private Patient extractPatient(Bundle patientBundle, Bundle targetBundle) {

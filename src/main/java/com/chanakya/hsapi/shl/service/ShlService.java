@@ -24,9 +24,7 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
-import java.util.List;
-import java.util.Map;
-import java.util.NoSuchElementException;
+import java.util.*;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -82,12 +80,11 @@ public class ShlService {
         } else {
             // Live mode: build fresh bundle from HealthLake
             String patientId = crosswalk.resolveHealthLakePatientId(link.getEnterpriseId());
-            byte[] pdfBytes = null;
+            var bundle = bundleBuilder.buildPatientSharedBundle(patientId, link.getSelectedResources());
             if (link.isIncludePdf()) {
-                pdfBytes = pdfGeneration.generatePatientSummaryPdf(link.getPatientName(), Map.of());
+                byte[] pdfBytes = pdfGeneration.generatePatientSummaryPdf(bundle, link.getPatientName());
+                bundleBuilder.addPdfDocumentReference(bundle, pdfBytes, link.getPatientName());
             }
-            var bundle = bundleBuilder.buildPatientSharedBundle(
-                patientId, link.getSelectedResources(), link.isIncludePdf(), pdfBytes, link.getPatientName());
             return fhirSerialization.toJson(bundle);
         }
     }
@@ -127,15 +124,12 @@ public class ShlService {
 
         String s3Key = null;
         if (!isLive) {
-            // Generate PDF if requested
-            byte[] pdfBytes = null;
+            // Snapshot mode: build bundle, generate PDF from bundle, attach PDF, encrypt, upload
+            var bundle = bundleBuilder.buildPatientSharedBundle(patientId, req.selectedResources());
             if (req.includePdf()) {
-                pdfBytes = pdfGeneration.generatePatientSummaryPdf(req.patientName(), Map.of());
+                byte[] pdfBytes = pdfGeneration.generatePatientSummaryPdf(bundle, req.patientName());
+                bundleBuilder.addPdfDocumentReference(bundle, pdfBytes, req.patientName());
             }
-
-            // Snapshot mode: build bundle, encrypt, upload to S3
-            var bundle = bundleBuilder.buildPatientSharedBundle(
-                patientId, req.selectedResources(), req.includePdf(), pdfBytes, req.patientName());
             String bundleJson = fhirSerialization.toJson(bundle);
             String jwe = encryption.encryptToJwe(bundleJson, rawKey);
             s3Key = s3.buildS3Key(req.idValue(), linkId);

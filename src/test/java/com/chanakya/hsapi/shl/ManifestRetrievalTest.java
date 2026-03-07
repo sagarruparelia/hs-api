@@ -79,8 +79,7 @@ class ManifestRetrievalTest {
 
     private void setupLiveFlowMocks(ShlLinkDocument link) {
         when(crosswalk.resolveHealthLakePatientId("ENT-001")).thenReturn("HL-PAT-123");
-        when(bundleBuilder.buildPatientSharedBundle(
-            eq("HL-PAT-123"), eq(link.getSelectedResources()), eq(false), isNull(), isNull()))
+        when(bundleBuilder.buildPatientSharedBundle(eq("HL-PAT-123"), eq(link.getSelectedResources())))
             .thenReturn(new Bundle());
         when(fhirSerialization.toJson(any(Bundle.class))).thenReturn("{\"resourceType\":\"Bundle\"}");
         when(fieldEncryption.decrypt("encrypted-key-value")).thenReturn("raw-key-base64url");
@@ -216,6 +215,6 @@ class ManifestRetrievalTest {
 
         verify(crosswalk).resolveHealthLakePatientId("ENT-001");
         verify(bundleBuilder).buildPatientSharedBundle(
-            eq("HL-PAT-123"), eq(link.getSelectedResources()), eq(false), isNull(), isNull());
+            eq("HL-PAT-123"), eq(link.getSelectedResources()));
     }
 }

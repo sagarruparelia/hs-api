@@ -2,72 +2,141 @@
 <html xmlns:th="http://www.thymeleaf.org" lang="en">
 <head>
     <meta charset="UTF-8"/>
-    <title>Patient Health Summary</title>
+    <title>Health Records Summary</title>
     <style>
+        @page {
+            size: letter;
+            margin: 40px 50px 60px 50px;
+            @bottom-center {
+                content: "Page " counter(page) " of " counter(pages) " | HealthSafe Smart Health Link";
+                font-family: Arial, Helvetica, sans-serif;
+                font-size: 8pt;
+                color: #999999;
+            }
+        }
         body {
             font-family: Arial, Helvetica, sans-serif;
-            font-size: 12px;
-            margin: 20px;
-            color: #333;
+            font-size: 10pt;
+            line-height: 1.4;
+            color: #333333;
+            margin: 0;
+            padding: 0;
         }
-        h1 {
-            color: #1a5276;
-            font-size: 18px;
-            border-bottom: 2px solid #1a5276;
-            padding-bottom: 5px;
+        h1.title {
+            font-size: 18pt;
+            font-weight: bold;
+            color: #333333;
+            margin: 0 0 10px 0;
         }
-        h2 {
-            color: #2c3e50;
-            font-size: 14px;
-            margin-top: 15px;
+        .subtitle {
+            font-size: 12pt;
+            color: #666666;
+            margin: 0 0 20px 0;
         }
-        .header {
-            text-align: center;
-            margin-bottom: 20px;
+        .provenance {
+            font-size: 9pt;
+            font-style: italic;
+            color: #002677;
+            margin: 0 0 10px 0;
         }
-        .patient-info {
-            background-color: #f8f9fa;
-            padding: 10px;
-            border-radius: 4px;
-            margin-bottom: 15px;
+        .separator {
+            border: none;
+            border-top: 1px solid #DADBDC;
+            margin: 0 0 10px 0;
         }
-        table {
+        h2.section-header {
+            font-size: 14pt;
+            font-weight: bold;
+            color: #002677;
+            margin: 15px 0 8px 0;
+        }
+        .patient-table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 10px;
+            margin: 0 0 10px 0;
         }
-        th, td {
-            border: 1px solid #ddd;
-            padding: 6px 8px;
-            text-align: left;
-            font-size: 11px;
+        .patient-table td {
+            padding: 4px 8px;
+            font-size: 10pt;
+            border-bottom: 1px solid #EEEEEE;
+            vertical-align: top;
         }
-        th {
-            background-color: #1a5276;
-            color: white;
+        .patient-table td.label {
+            width: 120px;
+            font-weight: bold;
+            color: #4B4D4F;
         }
-        tr:nth-child(even) {
-            background-color: #f2f2f2;
+        .resource-item {
+            font-size: 10pt;
+            margin: 2px 0 2px 10px;
         }
-        .footer {
-            margin-top: 30px;
-            font-size: 10px;
-            color: #777;
-            text-align: center;
+        .no-records {
+            font-size: 10pt;
+            font-style: italic;
+            color: #999999;
+            margin: 2px 0 2px 10px;
+        }
+        .disclaimer {
+            font-size: 8pt;
+            font-style: italic;
+            color: #999999;
+            margin: 30px 0 0 0;
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>Patient Health Summary</h1>
-    </div>
-    <div class="patient-info">
-        <p><strong>Patient:</strong> <span th:text="${patientName}">Patient Name</span></p>
-        <p><strong>Generated:</strong> <span th:text="${#temporals.format(#temporals.createNow(), 'MMMM d, yyyy')}">Date</span></p>
-    </div>
-    <div class="footer">
-        <p>This document was generated automatically as part of a Patient Shared Health Document (PSHD).</p>
-        <p>For questions about this document, contact your healthcare provider.</p>
-    </div>
+    <h1 class="title">Health Records Summary</h1>
+
+    <p class="subtitle">
+        Patient: <span th:text="${patientName}">Patient Name</span>
+        | Generated: <span th:text="${generatedDate}">Date</span>
+    </p>
+
+    <p class="provenance">
+        This document was shared by the patient via Smart Health Link.
+        Data is patient-originated, not provider-confirmed.
+    </p>
+
+    <hr class="separator"/>
+
+    <!-- Patient Information -->
+    <th:block th:if="${patientInfo != null}">
+        <h2 class="section-header">Patient Information</h2>
+        <table class="patient-table">
+            <tr th:if="${patientInfo.name() != null}">
+                <td class="label">Name</td>
+                <td th:text="${patientInfo.name()}">Name</td>
+            </tr>
+            <tr th:if="${patientInfo.birthDate() != null}">
+                <td class="label">Date of Birth</td>
+                <td th:text="${patientInfo.birthDate()}">DOB</td>
+            </tr>
+            <tr th:if="${patientInfo.gender() != null}">
+                <td class="label">Gender</td>
+                <td th:text="${patientInfo.gender()}">Gender</td>
+            </tr>
+        </table>
+    </th:block>
+
+    <!-- Resource Sections -->
+    <th:block th:each="section : ${sections}">
+        <h2 class="section-header"
+            th:text="${section.title() + ' (' + section.count() + ')'}">Section</h2>
+        <th:block th:if="${section.lines() != null and !section.lines().isEmpty()}">
+            <p class="resource-item" th:each="line : ${section.lines()}"
+               th:text="${line.summary()}">Resource line</p>
+        </th:block>
+        <th:block th:if="${section.lines() == null or section.lines().isEmpty()}">
+            <p class="no-records">No records available.</p>
+        </th:block>
+    </th:block>
+
+    <!-- Disclaimer -->
+    <p class="disclaimer">
+        This document was generated by HealthSafe and shared via Smart Health Link.
+        This is a summary of health records and should not be used as a substitute
+        for professional medical advice. For questions about this data, contact your
+        healthcare provider.
+    </p>
 </body>
 </html>

@@ -54,22 +54,19 @@ class PshdBundleComplianceTest {
 
     @Test
     void bundle_hasCollectionType() {
-        Bundle bundle = builder.buildPatientSharedBundle(
-            "HL-PAT-123", List.of("Condition"), false, null, null);
+        Bundle bundle = builder.buildPatientSharedBundle("HL-PAT-123", List.of("Condition"));
         assertEquals(Bundle.BundleType.COLLECTION, bundle.getType());
     }
 
     @Test
     void bundle_hasTimestamp() {
-        Bundle bundle = builder.buildPatientSharedBundle(
-            "HL-PAT-123", List.of("Condition"), false, null, null);
+        Bundle bundle = builder.buildPatientSharedBundle("HL-PAT-123", List.of("Condition"));
         assertNotNull(bundle.getTimestamp(), "Bundle.timestamp is required by PSHD spec");
     }
 
     @Test
     void bundle_containsPatient() {
-        Bundle bundle = builder.buildPatientSharedBundle(
-            "HL-PAT-123", List.of("Condition"), false, null, null);
+        Bundle bundle = builder.buildPatientSharedBundle("HL-PAT-123", List.of("Condition"));
         boolean hasPatient = bundle.getEntry().stream()
             .anyMatch(e -> e.getResource() instanceof Patient);
         assertTrue(hasPatient, "Bundle must contain exactly 1 Patient resource");
@@ -77,8 +74,7 @@ class PshdBundleComplianceTest {
 
     @Test
     void bundle_patientHasNoMetaProfile() {
-        Bundle bundle = builder.buildPatientSharedBundle(
-            "HL-PAT-123", List.of("Condition"), false, null, null);
+        Bundle bundle = builder.buildPatientSharedBundle("HL-PAT-123", List.of("Condition"));
         Patient patient = (Patient) bundle.getEntry().stream()
             .filter(e -> e.getResource() instanceof Patient)
             .findFirst().orElseThrow().getResource();
@@ -90,11 +86,11 @@ class PshdBundleComplianceTest {
     @Test
     void bundle_documentReference_hasCorrectType() {
         byte[] pdfBytes = "fake-pdf-content".getBytes();
-        Bundle bundle = builder.buildPatientSharedBundle(
-            "HL-PAT-123", List.of("Condition"), true, pdfBytes, "John Doe");
+        Bundle bundle = builder.buildPatientSharedBundle("HL-PAT-123", List.of("Condition"));
+        builder.addPdfDocumentReference(bundle, pdfBytes, "John Doe");
 
         DocumentReference docRef = findDocumentReference(bundle);
-        assertNotNull(docRef, "Bundle must contain DocumentReference when includePdf=true");
+        assertNotNull(docRef, "Bundle must contain DocumentReference when PDF is attached");
 
         Coding typeCoding = docRef.getType().getCodingFirstRep();
         assertEquals("http://loinc.org", typeCoding.getSystem());
@@ -105,8 +101,8 @@ class PshdBundleComplianceTest {
     @Test
     void bundle_documentReference_hasPatientSharedCategory() {
         byte[] pdfBytes = "fake-pdf-content".getBytes();
-        Bundle bundle = builder.buildPatientSharedBundle(
-            "HL-PAT-123", List.of("Condition"), true, pdfBytes, "John Doe");
+        Bundle bundle = builder.buildPatientSharedBundle("HL-PAT-123", List.of("Condition"));
+        builder.addPdfDocumentReference(bundle, pdfBytes, "John Doe");
 
         DocumentReference docRef = findDocumentReference(bundle);
         Coding categoryCoding = docRef.getCategoryFirstRep().getCodingFirstRep();
@@ -117,8 +113,8 @@ class PshdBundleComplianceTest {
     @Test
     void bundle_documentReference_statusIsCurrent() {
         byte[] pdfBytes = "fake-pdf-content".getBytes();
-        Bundle bundle = builder.buildPatientSharedBundle(
-            "HL-PAT-123", List.of("Condition"), true, pdfBytes, "John Doe");
+        Bundle bundle = builder.buildPatientSharedBundle("HL-PAT-123", List.of("Condition"));
+        builder.addPdfDocumentReference(bundle, pdfBytes, "John Doe");
 
         DocumentReference docRef = findDocumentReference(bundle);
         assertEquals(Enumerations.DocumentReferenceStatus.CURRENT, docRef.getStatus());
@@ -127,8 +123,8 @@ class PshdBundleComplianceTest {
     @Test
     void bundle_documentReference_authorReferencesPatient() {
         byte[] pdfBytes = "fake-pdf-content".getBytes();
-        Bundle bundle = builder.buildPatientSharedBundle(
-            "HL-PAT-123", List.of("Condition"), true, pdfBytes, "John Doe");
+        Bundle bundle = builder.buildPatientSharedBundle("HL-PAT-123", List.of("Condition"));
+        builder.addPdfDocumentReference(bundle, pdfBytes, "John Doe");
 
         DocumentReference docRef = findDocumentReference(bundle);
         assertTrue(docRef.hasAuthor(), "DocumentReference must have author");
@@ -139,8 +135,8 @@ class PshdBundleComplianceTest {
     @Test
     void bundle_documentReference_subjectReferencesPatient() {
         byte[] pdfBytes = "fake-pdf-content".getBytes();
-        Bundle bundle = builder.buildPatientSharedBundle(
-            "HL-PAT-123", List.of("Condition"), true, pdfBytes, "John Doe");
+        Bundle bundle = builder.buildPatientSharedBundle("HL-PAT-123", List.of("Condition"));
+        builder.addPdfDocumentReference(bundle, pdfBytes, "John Doe");
 
         DocumentReference docRef = findDocumentReference(bundle);
         assertTrue(docRef.hasSubject(), "DocumentReference must have subject");
@@ -151,8 +147,8 @@ class PshdBundleComplianceTest {
     @Test
     void bundle_documentReference_hasPdfAttachment() {
         byte[] pdfBytes = "fake-pdf-content".getBytes();
-        Bundle bundle = builder.buildPatientSharedBundle(
-            "HL-PAT-123", List.of("Condition"), true, pdfBytes, "John Doe");
+        Bundle bundle = builder.buildPatientSharedBundle("HL-PAT-123", List.of("Condition"));
+        builder.addPdfDocumentReference(bundle, pdfBytes, "John Doe");
 
         DocumentReference docRef = findDocumentReference(bundle);
         assertTrue(docRef.hasContent(), "DocumentReference must have content");
@@ -165,8 +161,8 @@ class PshdBundleComplianceTest {
     @Test
     void bundle_documentReference_hasPatastSecurityLabel() {
         byte[] pdfBytes = "fake-pdf-content".getBytes();
-        Bundle bundle = builder.buildPatientSharedBundle(
-            "HL-PAT-123", List.of("Condition"), true, pdfBytes, "John Doe");
+        Bundle bundle = builder.buildPatientSharedBundle("HL-PAT-123", List.of("Condition"));
+        builder.addPdfDocumentReference(bundle, pdfBytes, "John Doe");
 
         DocumentReference docRef = findDocumentReference(bundle);
         assertTrue(docRef.hasSecurityLabel(), "DocumentReference SHOULD have securityLabel");
@@ -178,8 +174,8 @@ class PshdBundleComplianceTest {
     @Test
     void bundle_documentReference_hasDate() {
         byte[] pdfBytes = "fake-pdf-content".getBytes();
-        Bundle bundle = builder.buildPatientSharedBundle(
-            "HL-PAT-123", List.of("Condition"), true, pdfBytes, "John Doe");
+        Bundle bundle = builder.buildPatientSharedBundle("HL-PAT-123", List.of("Condition"));
+        builder.addPdfDocumentReference(bundle, pdfBytes, "John Doe");
 
         DocumentReference docRef = findDocumentReference(bundle);
         assertNotNull(docRef.getDate(), "DocumentReference must have date");
@@ -188,7 +184,7 @@ class PshdBundleComplianceTest {
     @Test
     void bundle_discreteResources_noMetaProfile() {
         Bundle bundle = builder.buildPatientSharedBundle(
-            "HL-PAT-123", List.of("Condition", "MedicationRequest"), false, null, null);
+            "HL-PAT-123", List.of("Condition", "MedicationRequest"));
 
         for (Bundle.BundleEntryComponent entry : bundle.getEntry()) {
             Resource resource = entry.getResource();
@@ -201,18 +197,17 @@ class PshdBundleComplianceTest {
 
     @Test
     void bundle_withoutPdf_noDocumentReference() {
-        Bundle bundle = builder.buildPatientSharedBundle(
-            "HL-PAT-123", List.of("Condition"), false, null, null);
+        Bundle bundle = builder.buildPatientSharedBundle("HL-PAT-123", List.of("Condition"));
 
         DocumentReference docRef = findDocumentReference(bundle);
-        assertNull(docRef, "Bundle should not contain DocumentReference when includePdf=false");
+        assertNull(docRef, "Bundle should not contain DocumentReference when no PDF attached");
     }
 
     @Test
     void bundle_allEntries_haveFullUrl() {
         byte[] pdfBytes = "fake-pdf-content".getBytes();
-        Bundle bundle = builder.buildPatientSharedBundle(
-            "HL-PAT-123", List.of("Condition"), true, pdfBytes, "John Doe");
+        Bundle bundle = builder.buildPatientSharedBundle("HL-PAT-123", List.of("Condition"));
+        builder.addPdfDocumentReference(bundle, pdfBytes, "John Doe");
 
         for (Bundle.BundleEntryComponent entry : bundle.getEntry()) {
             assertNotNull(entry.getFullUrl(),

@@ -76,7 +76,7 @@ class ShlCreateFlowTest {
         when(keyGen.generateAesKeyBase64Url()).thenReturn("rxTgYlOaKJPFtcEd0qcceN8wEU4p94SqAwIWQe6uX7Q");
         when(fieldEncryption.encrypt(anyString())).thenReturn("encrypted-key");
         when(crosswalk.resolveHealthLakePatientId("ENT-001")).thenReturn("HL-PAT-123");
-        when(bundleBuilder.buildPatientSharedBundle(anyString(), anyList(), anyBoolean(), any(), any()))
+        when(bundleBuilder.buildPatientSharedBundle(anyString(), anyList()))
             .thenReturn(new Bundle());
         when(fhirSerialization.toJson(any(Bundle.class))).thenReturn("{\"resourceType\":\"Bundle\"}");
         when(encryption.encryptToJwe(anyString(), anyString())).thenReturn("encrypted.jwe.content.here.tag");
