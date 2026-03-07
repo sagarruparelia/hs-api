@@ -69,7 +69,7 @@ class SecurityBoundaryTest {
         mockMvc.perform(get("/actuator/health"))
             .andExpect(header().string("X-Content-Type-Options", "nosniff"))
             .andExpect(header().string("X-Frame-Options", "DENY"))
-            .andExpect(header().string("Strict-Transport-Security", "max-age=31536000; includeSubDomains"));
+            .andExpect(header().string("Strict-Transport-Security", "max-age=31536000 ; includeSubDomains"));
     }
 
     @Test
@@ -135,5 +135,23 @@ class SecurityBoundaryTest {
                 assertTrue(corsHeader == null || !corsHeader.equals("https://malicious.example.com"),
                     "Secured endpoints must restrict CORS to allowed origins");
             });
+    }
+
+    @Test
+    void securedEndpoint_withInvalidConsumerId_returns400() throws Exception {
+        mockMvc.perform(post("/secure/api/v1/shl/search")
+                .header("X-Consumer-Id", "<script>alert('xss')</script>")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"idType\":\"EID\",\"idValue\":\"test-123\"}"))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void securedEndpoint_withOverlongConsumerId_returns400() throws Exception {
+        mockMvc.perform(post("/secure/api/v1/shl/search")
+                .header("X-Consumer-Id", "a".repeat(200))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"idType\":\"EID\",\"idValue\":\"test-123\"}"))
+            .andExpect(status().isBadRequest());
     }
 }

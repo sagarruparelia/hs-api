@@ -70,7 +70,7 @@ class PatientCrosswalkIntegrationTest {
         var request = new MockHttpServletRequest();
         request.setAttribute(RequestIdFilter.REQUEST_ID_ATTR, "test-req-001");
         request.setAttribute(ExternalAuthFilter.CONSUMER_ID_ATTR, "test-consumer");
-        request.setAttribute(ExternalAuthFilter.SOURCE_ATTR, "external");
+        request.setAttribute(ExternalAuthFilter.SOURCE_ATTR, "proxy");
         request.setRemoteAddr("127.0.0.1");
         request.addHeader("User-Agent", "test-agent");
 

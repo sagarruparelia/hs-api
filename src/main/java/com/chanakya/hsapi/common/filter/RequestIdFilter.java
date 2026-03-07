@@ -4,6 +4,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.MDC;
 import org.springframework.core.annotation.Order;
@@ -14,6 +15,7 @@ import java.io.IOException;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
+@Slf4j
 @Component
 @Order(0)
 public class RequestIdFilter extends OncePerRequestFilter {
@@ -34,10 +36,17 @@ public class RequestIdFilter extends OncePerRequestFilter {
         response.setHeader(REQUEST_ID_HEADER, requestId);
 
         MDC.put(REQUEST_ID_ATTR, requestId);
+        MDC.put("origin", request.getHeader("Origin"));
+        MDC.put("remoteAddr", request.getRemoteAddr());
         try {
+            log.debug("Incoming request: {} {} origin={} remoteAddr={}",
+                    request.getMethod(), request.getRequestURI(),
+                    request.getHeader("Origin"), request.getRemoteAddr());
             filterChain.doFilter(request, response);
         } finally {
             MDC.remove(REQUEST_ID_ATTR);
+            MDC.remove("origin");
+            MDC.remove("remoteAddr");
         }
     }
 }
