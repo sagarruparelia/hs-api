@@ -1,8 +1,8 @@
 package com.chanakya.hsapi.pdf;
 
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.thymeleaf.TemplateEngine;
 import org.thymeleaf.context.Context;
@@ -10,16 +10,12 @@ import org.thymeleaf.context.Context;
 import java.io.ByteArrayOutputStream;
 import java.util.Map;
 
+@Slf4j
+@RequiredArgsConstructor
 @Service
 public class PdfGenerationService {
 
-    private static final Logger log = LoggerFactory.getLogger(PdfGenerationService.class);
-
     private final TemplateEngine templateEngine;
-
-    public PdfGenerationService(TemplateEngine templateEngine) {
-        this.templateEngine = templateEngine;
-    }
 
     public byte[] generatePatientSummaryPdf(String patientName, Map<String, Object> data) {
         Context context = new Context();

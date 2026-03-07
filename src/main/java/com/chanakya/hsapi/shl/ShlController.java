@@ -3,6 +3,7 @@ package com.chanakya.hsapi.shl;
 import com.chanakya.hsapi.shl.dto.*;
 import com.chanakya.hsapi.shl.service.ShlService;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -12,15 +13,12 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+@RequiredArgsConstructor
 @RestController
 @RequestMapping("/secure/api/v1/shl")
 public class ShlController {
 
     private final ShlService shlService;
-
-    public ShlController(ShlService shlService) {
-        this.shlService = shlService;
-    }
 
     @PostMapping("/search")
     public ResponseEntity<List<ShlLinkResponse>> search(@RequestBody ShlSearchRequest request) {

@@ -1,21 +1,18 @@
 package com.chanakya.hsapi.fhir;
 
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.hl7.fhir.r4.model.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
+@Slf4j
+@RequiredArgsConstructor
 @Service
 public class FhirBundleBuilder {
 
-    private static final Logger log = LoggerFactory.getLogger(FhirBundleBuilder.class);
-
-    // Maps FHIR resource type names to HealthLake resource type strings.
-    // Enum values now match FHIR names directly; this map handles the Observation special case
-    // (selectedResources stores "Observation" but the search must use "Observation").
     private static final Map<String, String> RESOURCE_TYPE_MAP = Map.ofEntries(
         Map.entry("MedicationRequest", "MedicationRequest"),
         Map.entry("Immunization", "Immunization"),
@@ -30,10 +27,6 @@ public class FhirBundleBuilder {
     );
 
     private final FhirClient fhirClient;
-
-    public FhirBundleBuilder(FhirClient fhirClient) {
-        this.fhirClient = fhirClient;
-    }
 
     public Bundle buildPatientSharedBundle(String healthLakePatientId,
                                            List<String> selectedResources,

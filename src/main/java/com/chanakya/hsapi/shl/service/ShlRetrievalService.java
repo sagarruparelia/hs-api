@@ -12,8 +12,8 @@ import com.chanakya.hsapi.shl.model.*;
 import com.chanakya.hsapi.shl.repository.ShlLinkRepository;
 import com.chanakya.hsapi.storage.S3PayloadService;
 import jakarta.servlet.http.HttpServletRequest;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
@@ -23,10 +23,10 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
+@RequiredArgsConstructor
 @Service
 public class ShlRetrievalService {
-
-    private static final Logger log = LoggerFactory.getLogger(ShlRetrievalService.class);
 
     private final ShlLinkRepository linkRepository;
     private final S3PayloadService s3;
@@ -38,23 +38,6 @@ public class ShlRetrievalService {
     private final FhirSerializationService fhirSerialization;
     private final PatientCrosswalkService crosswalk;
     private final PdfGenerationService pdfGeneration;
-
-    public ShlRetrievalService(ShlLinkRepository linkRepository, S3PayloadService s3,
-                                ShlService shlService, AuditService auditService,
-                                FieldEncryptionService fieldEncryption, EncryptionService encryption,
-                                FhirBundleBuilder bundleBuilder, FhirSerializationService fhirSerialization,
-                                PatientCrosswalkService crosswalk, PdfGenerationService pdfGeneration) {
-        this.linkRepository = linkRepository;
-        this.s3 = s3;
-        this.shlService = shlService;
-        this.auditService = auditService;
-        this.fieldEncryption = fieldEncryption;
-        this.encryption = encryption;
-        this.bundleBuilder = bundleBuilder;
-        this.fhirSerialization = fhirSerialization;
-        this.crosswalk = crosswalk;
-        this.pdfGeneration = pdfGeneration;
-    }
 
     public String retrieveSnapshot(String linkId, String recipient, HttpServletRequest request) {
         var link = linkRepository.findById(linkId).orElse(null);

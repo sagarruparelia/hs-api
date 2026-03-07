@@ -13,8 +13,8 @@ import com.chanakya.hsapi.shl.model.*;
 import com.chanakya.hsapi.shl.repository.ShlLinkRepository;
 import com.chanakya.hsapi.storage.S3PayloadService;
 import jakarta.servlet.http.HttpServletRequest;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
@@ -28,10 +28,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 
+@Slf4j
+@RequiredArgsConstructor
 @Service
 public class ShlService {
 
-    private static final Logger log = LoggerFactory.getLogger(ShlService.class);
     private static final Duration MIN_EXPIRY = Duration.ofMinutes(5);
     private static final Duration MAX_EXPIRY = Duration.ofDays(365);
 
@@ -47,26 +48,6 @@ public class ShlService {
     private final AuditService auditService;
     private final MongoTemplate mongoTemplate;
     private final PdfGenerationService pdfGeneration;
-
-    public ShlService(ShlLinkRepository linkRepository, KeyGenerationService keyGen,
-                      EncryptionService encryption, FieldEncryptionService fieldEncryption,
-                      FhirBundleBuilder bundleBuilder, FhirSerializationService fhirSerialization,
-                      S3PayloadService s3, PatientCrosswalkService crosswalk,
-                      ShlinkBuilder shlinkBuilder, AuditService auditService,
-                      MongoTemplate mongoTemplate, PdfGenerationService pdfGeneration) {
-        this.linkRepository = linkRepository;
-        this.keyGen = keyGen;
-        this.encryption = encryption;
-        this.fieldEncryption = fieldEncryption;
-        this.bundleBuilder = bundleBuilder;
-        this.fhirSerialization = fhirSerialization;
-        this.s3 = s3;
-        this.crosswalk = crosswalk;
-        this.shlinkBuilder = shlinkBuilder;
-        this.auditService = auditService;
-        this.mongoTemplate = mongoTemplate;
-        this.pdfGeneration = pdfGeneration;
-    }
 
     public List<ShlLinkResponse> search(ShlSearchRequest req) {
         return linkRepository.findByEnterpriseId(req.idValue()).stream()

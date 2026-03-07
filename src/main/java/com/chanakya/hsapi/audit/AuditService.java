@@ -5,25 +5,20 @@ import com.chanakya.hsapi.shl.model.ShlAuditAction;
 import com.chanakya.hsapi.shl.model.ShlAuditLogDocument;
 import com.chanakya.hsapi.shl.repository.ShlAuditLogRepository;
 import jakarta.servlet.http.HttpServletRequest;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.Map;
 
+@Slf4j
+@RequiredArgsConstructor
 @Service
 public class AuditService {
 
-    private static final Logger log = LoggerFactory.getLogger(AuditService.class);
-
     private final AuditLogRepository auditLogRepository;
     private final ShlAuditLogRepository shlAuditLogRepository;
-
-    public AuditService(AuditLogRepository auditLogRepository, ShlAuditLogRepository shlAuditLogRepository) {
-        this.auditLogRepository = auditLogRepository;
-        this.shlAuditLogRepository = shlAuditLogRepository;
-    }
 
     public void logFhirQuery(String enterpriseId, FhirResourceType resourceType,
                              HttpServletRequest request) {

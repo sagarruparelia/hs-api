@@ -1,8 +1,7 @@
 package com.chanakya.hsapi.fhir;
 
+import lombok.extern.slf4j.Slf4j;
 import org.hl7.fhir.r4.model.Bundle;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
@@ -21,10 +20,9 @@ import java.io.UncheckedIOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 
+@Slf4j
 @Service
 public class FhirClient {
-
-    private static final Logger log = LoggerFactory.getLogger(FhirClient.class);
 
     private final FhirSerializationService fhirSerialization;
     private final SdkHttpClient httpClient;

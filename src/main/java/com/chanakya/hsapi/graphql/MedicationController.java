@@ -7,6 +7,7 @@ import com.chanakya.hsapi.graphql.transform.MedicationTransform;
 import com.chanakya.hsapi.graphql.type.MedicationType;
 import com.chanakya.hsapi.shl.model.FhirResourceType;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.RequiredArgsConstructor;
 import org.springframework.graphql.data.method.annotation.Argument;
 import org.springframework.graphql.data.method.annotation.QueryMapping;
 import org.springframework.stereotype.Controller;
@@ -15,6 +16,7 @@ import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
 
+@RequiredArgsConstructor
 @Controller
 public class MedicationController {
 
@@ -23,16 +25,6 @@ public class MedicationController {
     private final MedicationTransform transform;
     private final AuditService auditService;
     private final HttpServletRequest request;
-
-    public MedicationController(PatientCrosswalkService crosswalk, FhirClient fhirClient,
-                                MedicationTransform transform, AuditService auditService,
-                                HttpServletRequest request) {
-        this.crosswalk = crosswalk;
-        this.fhirClient = fhirClient;
-        this.transform = transform;
-        this.auditService = auditService;
-        this.request = request;
-    }
 
     @QueryMapping
     public List<MedicationType> medications(@Argument String enterpriseId,

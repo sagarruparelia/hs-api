@@ -1,19 +1,18 @@
 package com.chanakya.hsapi.shl.service;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
+@RequiredArgsConstructor
 @Service
 public class ShlinkBuilder {
 
+    @Value("${app.base-url}")
     private final String baseUrl;
-
-    public ShlinkBuilder(@Value("${app.base-url}") String baseUrl) {
-        this.baseUrl = baseUrl;
-    }
 
     public String buildShlinkUri(String linkId, String flag, String rawKeyBase64Url,
                                   long expiresAtEpochSeconds, String label) {

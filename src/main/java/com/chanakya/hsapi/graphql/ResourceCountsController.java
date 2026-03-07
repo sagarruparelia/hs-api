@@ -6,25 +6,20 @@ import com.chanakya.hsapi.graphql.transform.PatientTransform;
 import com.chanakya.hsapi.graphql.type.HealthDashboardType;
 import com.chanakya.hsapi.graphql.type.PatientSummaryType;
 import com.chanakya.hsapi.graphql.type.ResourceCountsType;
+import lombok.RequiredArgsConstructor;
 import org.springframework.graphql.data.method.annotation.Argument;
 import org.springframework.graphql.data.method.annotation.QueryMapping;
 import org.springframework.stereotype.Controller;
 
 import java.util.concurrent.CompletableFuture;
 
+@RequiredArgsConstructor
 @Controller
 public class ResourceCountsController {
 
     private final PatientCrosswalkService crosswalk;
     private final FhirClient fhirClient;
     private final PatientTransform patientTransform;
-
-    public ResourceCountsController(PatientCrosswalkService crosswalk, FhirClient fhirClient,
-                                     PatientTransform patientTransform) {
-        this.crosswalk = crosswalk;
-        this.fhirClient = fhirClient;
-        this.patientTransform = patientTransform;
-    }
 
     @QueryMapping
     public ResourceCountsType resourceCounts(@Argument String enterpriseId) {

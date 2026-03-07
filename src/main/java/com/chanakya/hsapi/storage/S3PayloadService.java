@@ -1,7 +1,7 @@
 package com.chanakya.hsapi.storage;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.core.sync.RequestBody;
@@ -12,18 +12,14 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import java.nio.charset.StandardCharsets;
 
+@Slf4j
+@RequiredArgsConstructor
 @Service
 public class S3PayloadService {
 
-    private static final Logger log = LoggerFactory.getLogger(S3PayloadService.class);
-
     private final S3Client s3Client;
+    @Value("${aws.s3.bucket:}")
     private final String bucket;
-
-    public S3PayloadService(S3Client s3Client, @Value("${aws.s3.bucket:}") String bucket) {
-        this.s3Client = s3Client;
-        this.bucket = bucket;
-    }
 
     public String buildS3Key(String enterpriseId, String linkId) {
         return "shl/" + enterpriseId + "/" + linkId + ".jwe";
