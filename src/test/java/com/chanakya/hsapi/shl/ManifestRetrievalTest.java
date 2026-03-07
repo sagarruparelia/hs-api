@@ -68,8 +68,8 @@ class ManifestRetrievalTest {
         link.setId("link-live-001");
         link.setEnterpriseId("ENT-001");
         link.setFlag(ShlFlag.L);
-        link.setMode("live");
-        link.setStatus("active");
+        link.setMode(ShlMode.LIVE);
+        link.setStatus(ShlStatus.ACTIVE);
         link.setExpiresAt(Instant.now().plus(1, ChronoUnit.HOURS));
         link.setEncryptionKey("encrypted-key-value");
         link.setSelectedResources(List.of("Condition", "MedicationRequest"));
@@ -141,7 +141,7 @@ class ManifestRetrievalTest {
     @Test
     void retrieveManifest_revokedLink_returnsNoLongerValid() {
         var link = createActiveLiveLink();
-        link.setStatus("revoked");
+        link.setStatus(ShlStatus.REVOKED);
         when(linkRepo.findById("link-live-001")).thenReturn(Optional.of(link));
 
         ManifestResponse manifest = retrievalService.retrieveManifest("link-live-001", "app@example.com", request);

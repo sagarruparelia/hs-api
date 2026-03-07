@@ -1,22 +1,24 @@
 package com.chanakya.hsapi.shl.model;
 
-public final class ShlFlag {
+public enum ShlFlag {
+    U,
+    L;
 
-    public static final String U = "U";
-    public static final String L = "L";
+    public boolean isSnapshot() {
+        return this == U;
+    }
 
-    private ShlFlag() {}
+    public boolean isLive() {
+        return this == L;
+    }
 
     public static boolean isValid(String flag) {
         if (flag == null || flag.isEmpty()) return false;
-        return flag.equals(U) || flag.equals(L);
-    }
-
-    public static boolean isSnapshot(String flag) {
-        return U.equals(flag);
-    }
-
-    public static boolean isLive(String flag) {
-        return L.equals(flag);
+        try {
+            valueOf(flag);
+            return true;
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
     }
 }

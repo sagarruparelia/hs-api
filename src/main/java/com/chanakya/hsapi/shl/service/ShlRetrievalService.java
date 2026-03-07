@@ -22,6 +22,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -40,33 +41,10 @@ public class ShlRetrievalService {
     private final PdfGenerationService pdfGeneration;
 
     public String retrieveSnapshot(String linkId, String recipient, HttpServletRequest request) {
-        var link = linkRepository.findById(linkId).orElse(null);
-        if (link == null) {
-            auditService.logShlAction(linkId, null, ShlAuditAction.LINK_DENIED,
-                recipient, Map.of("reason", "not_found"), request);
-            return null;
-        }
+        var link = validateLink(linkId, recipient, request, ShlFlag::isSnapshot);
+        if (link == null) return null;
 
-        // Guard: GET is only valid for snapshot (U flag) links
-        if (!ShlFlag.isSnapshot(link.getFlag())) {
-            auditService.logShlAction(linkId, link.getEnterpriseId(), ShlAuditAction.LINK_DENIED,
-                recipient, Map.of("reason", "wrong_method_for_flag"), request);
-            return null;
-        }
-
-        String effectiveStatus = link.getEffectiveStatus();
-        if ("revoked".equals(effectiveStatus)) {
-            shlService.pushAccessRecord(linkId, AccessRecord.of(recipient, "ACCESS_REVOKED"));
-            auditService.logShlAction(linkId, link.getEnterpriseId(), ShlAuditAction.LINK_ACCESS_REVOKED,
-                recipient, null, request);
-            return null;
-        }
-        if ("expired".equals(effectiveStatus)) {
-            shlService.pushAccessRecord(linkId, AccessRecord.of(recipient, "ACCESS_EXPIRED"));
-            auditService.logShlAction(linkId, link.getEnterpriseId(), ShlAuditAction.LINK_ACCESS_EXPIRED,
-                recipient, null, request);
-            return null;
-        }
+        if (handleInactiveStatus(link, linkId, recipient, request)) return null;
 
         String jwe = s3.downloadJwe(link.getS3Key());
 
@@ -78,47 +56,23 @@ public class ShlRetrievalService {
     }
 
     public ManifestResponse retrieveManifest(String linkId, String recipient, HttpServletRequest request) {
-        var link = linkRepository.findById(linkId).orElse(null);
-        if (link == null) {
-            auditService.logShlAction(linkId, null, ShlAuditAction.LINK_DENIED,
-                recipient, Map.of("reason", "not_found"), request);
-            return null;
-        }
+        var link = validateLink(linkId, recipient, request, ShlFlag::isLive);
+        if (link == null) return null;
 
-        // Guard: POST is only valid for live (L flag) links
-        if (!ShlFlag.isLive(link.getFlag())) {
-            auditService.logShlAction(linkId, link.getEnterpriseId(), ShlAuditAction.LINK_DENIED,
-                recipient, Map.of("reason", "wrong_method_for_flag"), request);
-            return null;
-        }
-
-        String effectiveStatus = link.getEffectiveStatus();
-        if ("revoked".equals(effectiveStatus)) {
-            shlService.pushAccessRecord(linkId, AccessRecord.of(recipient, "ACCESS_REVOKED"));
-            auditService.logShlAction(linkId, link.getEnterpriseId(), ShlAuditAction.LINK_ACCESS_REVOKED,
-                recipient, null, request);
-            return new ManifestResponse("no-longer-valid", List.of());
-        }
-        if ("expired".equals(effectiveStatus)) {
-            shlService.pushAccessRecord(linkId, AccessRecord.of(recipient, "ACCESS_EXPIRED"));
-            auditService.logShlAction(linkId, link.getEnterpriseId(), ShlAuditAction.LINK_ACCESS_EXPIRED,
-                recipient, null, request);
+        if (handleInactiveStatus(link, linkId, recipient, request)) {
             return new ManifestResponse("no-longer-valid", List.of());
         }
 
-        // Generate PDF if requested
         byte[] pdfBytes = null;
         if (link.isIncludePdf()) {
             pdfBytes = pdfGeneration.generatePatientSummaryPdf(link.getPatientName(), Map.of());
         }
 
-        // Build fresh bundle for live mode
         String patientId = crosswalk.resolveHealthLakePatientId(link.getEnterpriseId());
         var bundle = bundleBuilder.buildPatientSharedBundle(
             patientId, link.getSelectedResources(), link.isIncludePdf(), pdfBytes, link.getPatientName());
         String bundleJson = fhirSerialization.toJson(bundle);
 
-        // Decrypt the stored key to encrypt the bundle
         String rawKey = fieldEncryption.decrypt(link.getEncryptionKey());
         String jwe = encryption.encryptToJwe(bundleJson, rawKey);
 
@@ -128,6 +82,40 @@ public class ShlRetrievalService {
 
         var file = new ManifestResponse.ManifestFile("application/fhir+json", jwe);
         return new ManifestResponse("can-change", List.of(file));
+    }
+
+    private ShlLinkDocument validateLink(String linkId, String recipient,
+                                          HttpServletRequest request, Predicate<ShlFlag> flagCheck) {
+        var link = linkRepository.findById(linkId).orElse(null);
+        if (link == null) {
+            auditService.logShlAction(linkId, null, ShlAuditAction.LINK_DENIED,
+                recipient, Map.of("reason", "not_found"), request);
+            return null;
+        }
+        if (!flagCheck.test(link.getFlag())) {
+            auditService.logShlAction(linkId, link.getEnterpriseId(), ShlAuditAction.LINK_DENIED,
+                recipient, Map.of("reason", "wrong_method_for_flag"), request);
+            return null;
+        }
+        return link;
+    }
+
+    private boolean handleInactiveStatus(ShlLinkDocument link, String linkId,
+                                          String recipient, HttpServletRequest request) {
+        ShlStatus effectiveStatus = link.getEffectiveStatus();
+        if (effectiveStatus == ShlStatus.REVOKED) {
+            shlService.pushAccessRecord(linkId, AccessRecord.of(recipient, "ACCESS_REVOKED"));
+            auditService.logShlAction(linkId, link.getEnterpriseId(), ShlAuditAction.LINK_ACCESS_REVOKED,
+                recipient, null, request);
+            return true;
+        }
+        if (effectiveStatus == ShlStatus.EXPIRED) {
+            shlService.pushAccessRecord(linkId, AccessRecord.of(recipient, "ACCESS_EXPIRED"));
+            auditService.logShlAction(linkId, link.getEnterpriseId(), ShlAuditAction.LINK_ACCESS_EXPIRED,
+                recipient, null, request);
+            return true;
+        }
+        return false;
     }
 
     private String sha256(String input) {

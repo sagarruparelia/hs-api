@@ -5,7 +5,6 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.CompoundIndex;
-import org.springframework.data.mongodb.core.index.CompoundIndexes;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 import org.springframework.data.mongodb.core.mapping.Field;
@@ -25,31 +24,23 @@ public class ShlLinkDocument {
     private String id;
     private String enterpriseId;
     private String label;
-    private String mode;
-    private String flag;
+    private ShlMode mode;
+    private ShlFlag flag;
     private String encryptionKey;
     private List<String> selectedResources;
     private boolean includePdf;
     private String patientName;
     @Indexed(name = "idx_expiresAt")
     private Instant expiresAt;
-    private String status;
+    private ShlStatus status;
     private String s3Key;
     private Instant createdAt;
     @Field("accessHistory")
     private List<AccessRecord> accessHistory = new ArrayList<>();
 
-    public String getEffectiveStatus() {
-        if ("revoked".equalsIgnoreCase(status)) return "revoked";
-        if (expiresAt != null && Instant.now().isAfter(expiresAt)) return "expired";
-        return "active";
+    public ShlStatus getEffectiveStatus() {
+        if (status == ShlStatus.REVOKED) return ShlStatus.REVOKED;
+        if (expiresAt != null && Instant.now().isAfter(expiresAt)) return ShlStatus.EXPIRED;
+        return ShlStatus.ACTIVE;
     }
-
-    public void setMode(String mode) { this.mode = mode; }
-
-    public void setMode(ShlMode mode) { this.mode = mode.name().toLowerCase(); }
-
-    public void setStatus(String status) { this.status = status; }
-
-    public void setStatus(ShlStatus status) { this.status = status.name().toLowerCase(); }
 }

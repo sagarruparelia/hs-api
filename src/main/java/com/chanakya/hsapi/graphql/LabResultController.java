@@ -14,7 +14,7 @@ import org.springframework.stereotype.Controller;
 
 import java.util.List;
 
-import static com.chanakya.hsapi.graphql.MedicationController.filterAndSort;
+import static com.chanakya.hsapi.graphql.GraphQlUtils.filterAndSort;
 
 @RequiredArgsConstructor
 @Controller

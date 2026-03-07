@@ -50,10 +50,9 @@ public class AuditService {
         audit.setIpAddress(getClientIp(request));
         audit.setUserAgent(request.getHeader("User-Agent"));
         audit.setRequestId((String) request.getAttribute(RequestIdFilter.REQUEST_ID_ATTR));
-        audit.setConsumerId(request.getAttribute(ExternalAuthFilter.CONSUMER_ID_ATTR) != null
-            ? (String) request.getAttribute(ExternalAuthFilter.CONSUMER_ID_ATTR) : null);
-        audit.setSource(request.getAttribute(ExternalAuthFilter.SOURCE_ATTR) != null
-            ? (String) request.getAttribute(ExternalAuthFilter.SOURCE_ATTR) : "public");
+        audit.setConsumerId((String) request.getAttribute(ExternalAuthFilter.CONSUMER_ID_ATTR));
+        var source = (String) request.getAttribute(ExternalAuthFilter.SOURCE_ATTR);
+        audit.setSource(source != null ? source : "public");
         audit.setTimestamp(Instant.now());
         shlAuditLogRepository.save(audit);
         log.debug("SHL Audit: {} linkId={} recipient={}", action, linkId, recipient);

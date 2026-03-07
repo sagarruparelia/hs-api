@@ -46,7 +46,7 @@ public class FieldEncryptionService {
             System.arraycopy(ciphertext, 0, result, IV_LENGTH, ciphertext.length);
 
             return Base64.getUrlEncoder().withoutPadding().encodeToString(result);
-        } catch (Exception e) {
+        } catch (java.security.GeneralSecurityException e) {
             throw new RuntimeException("Encryption failed", e);
         }
     }
@@ -65,7 +65,7 @@ public class FieldEncryptionService {
             byte[] plaintext = cipher.doFinal(ciphertext);
 
             return new String(plaintext, StandardCharsets.UTF_8);
-        } catch (Exception e) {
+        } catch (java.security.GeneralSecurityException e) {
             throw new RuntimeException("Decryption failed", e);
         }
     }

@@ -6,12 +6,11 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
-
+import java.util.Arrays;
 import java.util.List;
 
 @Configuration
-public class WebMvcConfig implements WebMvcConfigurer {
+public class WebMvcConfig {
 
     private static final long CORS_MAX_AGE_SECONDS = 3600L;
 
@@ -32,7 +31,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
         // Secured API endpoints — restricted CORS
         CorsConfiguration secureConfig = new CorsConfiguration();
-        secureConfig.setAllowedOrigins(List.of(allowedOrigins.split(",")));
+        secureConfig.setAllowedOrigins(Arrays.asList(allowedOrigins.split(",")));
         secureConfig.setAllowedMethods(List.of("POST"));
         secureConfig.setAllowedHeaders(List.of("Content-Type", "X-Consumer-Id", "X-Request-Id"));
         secureConfig.setMaxAge(CORS_MAX_AGE_SECONDS);

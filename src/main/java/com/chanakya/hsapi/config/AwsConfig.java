@@ -15,16 +15,16 @@ public class AwsConfig {
     private String region;
 
     @Bean
-    public S3Client s3Client() {
-        return S3Client.builder()
-            .region(Region.of(region))
-            .credentialsProvider(DefaultCredentialsProvider.builder().build())
-            .httpClient(Apache5HttpClient.builder().build())
-            .build();
+    public DefaultCredentialsProvider defaultCredentialsProvider() {
+        return DefaultCredentialsProvider.builder().build();
     }
 
     @Bean
-    public DefaultCredentialsProvider defaultCredentialsProvider() {
-        return DefaultCredentialsProvider.builder().build();
+    public S3Client s3Client(DefaultCredentialsProvider credentialsProvider) {
+        return S3Client.builder()
+            .region(Region.of(region))
+            .credentialsProvider(credentialsProvider)
+            .httpClient(Apache5HttpClient.builder().build())
+            .build();
     }
 }

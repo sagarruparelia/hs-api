@@ -74,7 +74,7 @@ public class ShlService {
         var link = linkRepository.findById(req.linkId())
             .orElseThrow(() -> new NoSuchElementException("Link not found: " + req.linkId()));
 
-        if ("snapshot".equals(link.getMode()) && link.getS3Key() != null) {
+        if (link.getMode() == ShlMode.SNAPSHOT && link.getS3Key() != null) {
             // Snapshot: download JWE from S3, decrypt, return raw FHIR Bundle JSON
             String jwe = s3.downloadJwe(link.getS3Key());
             String rawKey = fieldEncryption.decrypt(link.getEncryptionKey());
@@ -111,7 +111,7 @@ public class ShlService {
             throw new IllegalArgumentException("expiresAt must be at most 365 days from now");
         }
 
-        boolean isLive = "live".equalsIgnoreCase(req.mode());
+        boolean isLive = ShlMode.LIVE.name().equalsIgnoreCase(req.mode());
 
         if (req.includePdf() && (req.patientName() == null || req.patientName().isBlank())) {
             throw new IllegalArgumentException("patientName is required when includePdf is true");
@@ -147,25 +147,25 @@ public class ShlService {
         link.setId(linkId);
         link.setEnterpriseId(req.idValue());
         link.setLabel(req.label());
-        link.setMode(isLive ? "live" : "snapshot");
+        link.setMode(isLive ? ShlMode.LIVE : ShlMode.SNAPSHOT);
         link.setFlag(isLive ? ShlFlag.L : ShlFlag.U);
         link.setEncryptionKey(encryptedKey);
         link.setSelectedResources(req.selectedResources());
         link.setIncludePdf(req.includePdf());
         link.setPatientName(req.patientName());
         link.setExpiresAt(expiresAt);
-        link.setStatus("active");
+        link.setStatus(ShlStatus.ACTIVE);
         link.setS3Key(s3Key);
         link.setCreatedAt(now);
         linkRepository.save(link);
 
         // Build shlink URI
         String shlinkUri = shlinkBuilder.buildShlinkUri(
-            linkId, link.getFlag(), rawKey, expiresAt.getEpochSecond(), req.label());
+            linkId, link.getFlag().name(), rawKey, expiresAt.getEpochSecond(), req.label());
 
         // Audit
         auditService.logShlAction(linkId, req.idValue(), ShlAuditAction.LINK_CREATED,
-            null, Map.of("mode", link.getMode(), "flag", link.getFlag()), httpRequest);
+            null, Map.of("mode", link.getMode().name(), "flag", link.getFlag().name()), httpRequest);
 
         return new ShlCreateResponse(linkId, shlinkUri, expiresAt);
     }
@@ -174,7 +174,7 @@ public class ShlService {
         var link = linkRepository.findById(req.linkId())
             .orElseThrow(() -> new NoSuchElementException("Link not found"));
 
-        link.setStatus("revoked");
+        link.setStatus(ShlStatus.REVOKED);
         linkRepository.save(link);
 
         auditService.logShlAction(link.getId(), link.getEnterpriseId(), ShlAuditAction.LINK_REVOKED,
@@ -190,15 +190,15 @@ public class ShlService {
     private ShlLinkResponse toResponse(ShlLinkDocument link, boolean includeHistory) {
         String rawKey = fieldEncryption.decrypt(link.getEncryptionKey());
         String shlinkUri = shlinkBuilder.buildShlinkUri(
-            link.getId(), link.getFlag(), rawKey,
+            link.getId(), link.getFlag().name(), rawKey,
             link.getExpiresAt().getEpochSecond(), link.getLabel());
 
         List<AccessRecord> history = includeHistory ? link.getAccessHistory() : null;
 
         return new ShlLinkResponse(
             link.getId(), link.getLabel(),
-            link.getMode(), link.getFlag(),
-            link.getEffectiveStatus(),
+            link.getMode().name(), link.getFlag().name(),
+            link.getEffectiveStatus().name().toLowerCase(),
             shlinkUri,
             link.getExpiresAt(), link.getCreatedAt(),
             link.getSelectedResources(), link.isIncludePdf(),

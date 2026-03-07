@@ -3,6 +3,7 @@ package com.chanakya.hsapi.shl;
 import com.chanakya.hsapi.crypto.KeyGenerationService;
 import com.chanakya.hsapi.shl.service.ShlinkBuilder;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.util.Base64;
 
@@ -17,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class ShlinkUriComplianceTest {
 
-    private final ShlinkBuilder builder = new ShlinkBuilder("https://api.example.com");
+    private final ShlinkBuilder builder = new ShlinkBuilder("https://api.example.com", JsonMapper.builder().build());
     private final KeyGenerationService keyGen = new KeyGenerationService();
 
     private static final String LINK_ID = "test-link-abc123";

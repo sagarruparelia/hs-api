@@ -60,7 +60,7 @@ class SnapshotRetrievalTest {
         link.setId("link-001");
         link.setEnterpriseId("ENT-001");
         link.setFlag(ShlFlag.U);
-        link.setStatus("active");
+        link.setStatus(ShlStatus.ACTIVE);
         link.setExpiresAt(Instant.now().plus(1, ChronoUnit.HOURS));
         link.setS3Key("shl/ENT-001/link-001.jwe");
         return link;
@@ -81,7 +81,7 @@ class SnapshotRetrievalTest {
     @Test
     void retrieveSnapshot_revokedLink_returnsNull() {
         var link = createActiveSnapshotLink();
-        link.setStatus("revoked");
+        link.setStatus(ShlStatus.REVOKED);
         when(linkRepo.findById("link-001")).thenReturn(Optional.of(link));
 
         String jwe = retrievalService.retrieveSnapshot("link-001", "Dr. Smith", request);
@@ -160,7 +160,7 @@ class SnapshotRetrievalTest {
     @Test
     void retrieveSnapshot_revokedLink_pushesAccessRecord() {
         var link = createActiveSnapshotLink();
-        link.setStatus("revoked");
+        link.setStatus(ShlStatus.REVOKED);
         when(linkRepo.findById("link-001")).thenReturn(Optional.of(link));
 
         retrievalService.retrieveSnapshot("link-001", "Dr. Smith", request);

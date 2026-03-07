@@ -10,8 +10,7 @@ import com.chanakya.hsapi.fhir.FhirSerializationService;
 import com.chanakya.hsapi.pdf.PdfGenerationService;
 import com.chanakya.hsapi.shl.dto.ShlCreateRequest;
 import com.chanakya.hsapi.shl.dto.ShlCreateResponse;
-import com.chanakya.hsapi.shl.model.ShlAuditAction;
-import com.chanakya.hsapi.shl.model.ShlLinkDocument;
+import com.chanakya.hsapi.shl.model.*;
 import com.chanakya.hsapi.shl.repository.ShlLinkRepository;
 import com.chanakya.hsapi.shl.service.ShlService;
 import com.chanakya.hsapi.shl.service.ShlinkBuilder;
@@ -114,7 +113,7 @@ class ShlCreateFlowTest {
 
         ArgumentCaptor<ShlLinkDocument> captor = ArgumentCaptor.forClass(ShlLinkDocument.class);
         verify(linkRepo).save(captor.capture());
-        assertEquals("U", captor.getValue().getFlag(),
+        assertEquals(ShlFlag.U, captor.getValue().getFlag(),
             "Snapshot mode must set flag to U");
     }
 
@@ -152,7 +151,7 @@ class ShlCreateFlowTest {
 
         ArgumentCaptor<ShlLinkDocument> captor = ArgumentCaptor.forClass(ShlLinkDocument.class);
         verify(linkRepo).save(captor.capture());
-        assertEquals("L", captor.getValue().getFlag(),
+        assertEquals(ShlFlag.L, captor.getValue().getFlag(),
             "Live mode must set flag to L");
     }
 
@@ -202,7 +201,7 @@ class ShlCreateFlowTest {
             eq("ENT-001"),
             eq(ShlAuditAction.LINK_CREATED),
             isNull(),
-            eq(Map.of("mode", "snapshot", "flag", "U")),
+            eq(Map.of("mode", "SNAPSHOT", "flag", "U")),
             eq(httpRequest));
     }
 
@@ -219,7 +218,7 @@ class ShlCreateFlowTest {
 
         ArgumentCaptor<ShlLinkDocument> captor = ArgumentCaptor.forClass(ShlLinkDocument.class);
         verify(linkRepo).save(captor.capture());
-        assertEquals("active", captor.getValue().getStatus(),
+        assertEquals(ShlStatus.ACTIVE, captor.getValue().getStatus(),
             "New link must have status=active");
     }
 }

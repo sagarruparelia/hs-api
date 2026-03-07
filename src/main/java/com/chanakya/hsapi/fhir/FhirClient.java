@@ -42,7 +42,7 @@ public class FhirClient {
         this.region = Region.of(regionStr);
         this.baseEndpoint = (endpoint != null && endpoint.endsWith("/"))
             ? endpoint.substring(0, endpoint.length() - 1) : endpoint;
-        this.httpClient = Apache5HttpClient.create();
+        this.httpClient = Apache5HttpClient.builder().build();
     }
 
     private String executeSignedGet(String path) {

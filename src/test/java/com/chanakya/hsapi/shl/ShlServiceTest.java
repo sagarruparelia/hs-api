@@ -1,9 +1,9 @@
 package com.chanakya.hsapi.shl;
 
 import com.chanakya.hsapi.shl.model.*;
-import com.chanakya.hsapi.shl.repository.ShlLinkRepository;
 import com.chanakya.hsapi.shl.service.ShlinkBuilder;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -18,7 +18,7 @@ class ShlServiceTest {
         var link = new ShlLinkDocument();
         link.setStatus(ShlStatus.ACTIVE);
         link.setExpiresAt(Instant.now().plus(1, ChronoUnit.HOURS));
-        assertEquals("active", link.getEffectiveStatus());
+        assertEquals(ShlStatus.ACTIVE, link.getEffectiveStatus());
     }
 
     @Test
@@ -26,7 +26,7 @@ class ShlServiceTest {
         var link = new ShlLinkDocument();
         link.setStatus(ShlStatus.ACTIVE);
         link.setExpiresAt(Instant.now().minus(1, ChronoUnit.HOURS));
-        assertEquals("expired", link.getEffectiveStatus());
+        assertEquals(ShlStatus.EXPIRED, link.getEffectiveStatus());
     }
 
     @Test
@@ -34,12 +34,12 @@ class ShlServiceTest {
         var link = new ShlLinkDocument();
         link.setStatus(ShlStatus.REVOKED);
         link.setExpiresAt(Instant.now().plus(1, ChronoUnit.HOURS));
-        assertEquals("revoked", link.getEffectiveStatus());
+        assertEquals(ShlStatus.REVOKED, link.getEffectiveStatus());
     }
 
     @Test
     void shlinkBuilder_producesValidUri() {
-        var builder = new ShlinkBuilder("https://api.example.com");
+        var builder = new ShlinkBuilder("https://api.example.com", JsonMapper.builder().build());
         String uri = builder.buildShlinkUri(
             "test-link-id", "U", "rxTgYlOaKJPFtcEd0qcceN8wEU4p94SqAwIWQe6uX7Q",
             1706745600L, "Test Label");
@@ -62,10 +62,10 @@ class ShlServiceTest {
         assertFalse(ShlFlag.isValid(null));
         assertFalse(ShlFlag.isValid(""));
 
-        assertTrue(ShlFlag.isSnapshot("U"));
-        assertFalse(ShlFlag.isSnapshot("L"));
-        assertTrue(ShlFlag.isLive("L"));
-        assertFalse(ShlFlag.isLive("U"));
+        assertTrue(ShlFlag.U.isSnapshot());
+        assertFalse(ShlFlag.L.isSnapshot());
+        assertTrue(ShlFlag.L.isLive());
+        assertFalse(ShlFlag.U.isLive());
     }
 
     @Test

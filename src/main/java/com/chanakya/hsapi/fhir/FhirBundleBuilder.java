@@ -13,19 +13,6 @@ import java.util.concurrent.CompletableFuture;
 @Service
 public class FhirBundleBuilder {
 
-    private static final Map<String, String> RESOURCE_TYPE_MAP = Map.ofEntries(
-        Map.entry("MedicationRequest", "MedicationRequest"),
-        Map.entry("Immunization", "Immunization"),
-        Map.entry("AllergyIntolerance", "AllergyIntolerance"),
-        Map.entry("Condition", "Condition"),
-        Map.entry("Procedure", "Procedure"),
-        Map.entry("Observation", "Observation"),
-        Map.entry("Coverage", "Coverage"),
-        Map.entry("ExplanationOfBenefit", "ExplanationOfBenefit"),
-        Map.entry("Appointment", "Appointment"),
-        Map.entry("CareTeam", "CareTeam")
-    );
-
     private final FhirClient fhirClient;
 
     public Bundle buildPatientSharedBundle(String healthLakePatientId,
@@ -47,10 +34,9 @@ public class FhirBundleBuilder {
 
         List<CompletableFuture<Bundle>> futures = selectedResources.stream()
             .filter(rt -> !"PATIENT".equalsIgnoreCase(rt) && !"Patient".equals(rt))
-            .map(rt -> CompletableFuture.supplyAsync(() -> {
-                String fhirType = RESOURCE_TYPE_MAP.getOrDefault(rt, rt);
-                return fhirClient.searchResources(fhirType, healthLakePatientId);
-            }))
+            .map(rt -> CompletableFuture.supplyAsync(() ->
+                fhirClient.searchResources(rt, healthLakePatientId)
+            ))
             .toList();
 
         CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)).join();

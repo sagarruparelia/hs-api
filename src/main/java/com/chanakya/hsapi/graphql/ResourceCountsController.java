@@ -56,11 +56,15 @@ public class ResourceCountsController {
         CompletableFuture.allOf(medications, immunizations, allergies, conditions, procedures,
             labResults, coverages, claims, appointments, careTeams).join();
 
-        int m = medications.join(), i = immunizations.join(), al = allergies.join(),
-            co = conditions.join(), pr = procedures.join(), lr = labResults.join(),
-            cv = coverages.join(), cl = claims.join(), ap = appointments.join(), ct = careTeams.join();
+        int medCount = medications.join(), immCount = immunizations.join(),
+            algCount = allergies.join(), condCount = conditions.join(),
+            procCount = procedures.join(), labCount = labResults.join(),
+            covCount = coverages.join(), claimCount = claims.join(),
+            apptCount = appointments.join(), ctCount = careTeams.join();
 
-        return new ResourceCountsType(m, i, al, co, pr, lr, cv, cl, ap, ct,
-            m + i + al + co + pr + lr + cv + cl + ap + ct);
+        return new ResourceCountsType(medCount, immCount, algCount, condCount, procCount,
+            labCount, covCount, claimCount, apptCount, ctCount,
+            medCount + immCount + algCount + condCount + procCount +
+                labCount + covCount + claimCount + apptCount + ctCount);
     }
 }

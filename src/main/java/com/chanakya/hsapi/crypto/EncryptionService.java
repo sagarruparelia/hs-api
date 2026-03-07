@@ -34,7 +34,7 @@ public class EncryptionService {
             JWEObject jwe = JWEObject.parse(jweString);
             jwe.decrypt(new DirectDecrypter(key));
             return jwe.getPayload().toString();
-        } catch (Exception e) {
+        } catch (JOSEException | java.text.ParseException e) {
             throw new RuntimeException("JWE decryption failed", e);
         }
     }
