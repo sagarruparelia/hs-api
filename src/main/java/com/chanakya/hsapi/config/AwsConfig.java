@@ -18,13 +18,13 @@ public class AwsConfig {
     public S3Client s3Client() {
         return S3Client.builder()
             .region(Region.of(region))
-            .credentialsProvider(DefaultCredentialsProvider.create())
-            .httpClient(Apache5HttpClient.create())
+            .credentialsProvider(DefaultCredentialsProvider.builder().build())
+            .httpClient(Apache5HttpClient.builder().build())
             .build();
     }
 
     @Bean
     public DefaultCredentialsProvider defaultCredentialsProvider() {
-        return DefaultCredentialsProvider.create();
+        return DefaultCredentialsProvider.builder().build();
     }
 }

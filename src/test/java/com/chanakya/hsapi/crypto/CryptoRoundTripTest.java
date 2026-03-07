@@ -29,8 +29,7 @@ class CryptoRoundTripTest {
         assertEquals(rawKey, decryptedKey, "Decrypted key must match original");
 
         // 4. JWE encrypt content with the raw key
-        String fhirBundle = """
-            {"resourceType":"Bundle","type":"collection","entry":[]}""";
+        String fhirBundle = "{\"resourceType\":\"Bundle\",\"type\":\"collection\",\"entry\":[]}";
         String jwe = encryption.encryptToJwe(fhirBundle, rawKey);
         assertNotNull(jwe);
         assertTrue(jwe.contains("."), "JWE must have dot-separated segments");

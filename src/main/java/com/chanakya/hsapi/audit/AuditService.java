@@ -1,5 +1,7 @@
 package com.chanakya.hsapi.audit;
 
+import com.chanakya.hsapi.auth.ExternalAuthFilter;
+import com.chanakya.hsapi.common.filter.RequestIdFilter;
 import com.chanakya.hsapi.shl.model.FhirResourceType;
 import com.chanakya.hsapi.shl.model.ShlAuditAction;
 import com.chanakya.hsapi.shl.model.ShlAuditLogDocument;
@@ -28,8 +30,8 @@ public class AuditService {
         audit.setResourceType(resourceType);
         audit.setIpAddress(getClientIp(request));
         audit.setUserAgent(request.getHeader("User-Agent"));
-        audit.setRequestId((String) request.getAttribute("requestId"));
-        audit.setConsumerId((String) request.getAttribute("consumerId"));
+        audit.setRequestId((String) request.getAttribute(RequestIdFilter.REQUEST_ID_ATTR));
+        audit.setConsumerId((String) request.getAttribute(ExternalAuthFilter.CONSUMER_ID_ATTR));
         audit.setSource("external");
         audit.setTimestamp(Instant.now());
         auditLogRepository.save(audit);
@@ -47,11 +49,11 @@ public class AuditService {
         audit.setDetail(detail);
         audit.setIpAddress(getClientIp(request));
         audit.setUserAgent(request.getHeader("User-Agent"));
-        audit.setRequestId((String) request.getAttribute("requestId"));
-        audit.setConsumerId(request.getAttribute("consumerId") != null
-            ? (String) request.getAttribute("consumerId") : null);
-        audit.setSource(request.getAttribute("source") != null
-            ? (String) request.getAttribute("source") : "public");
+        audit.setRequestId((String) request.getAttribute(RequestIdFilter.REQUEST_ID_ATTR));
+        audit.setConsumerId(request.getAttribute(ExternalAuthFilter.CONSUMER_ID_ATTR) != null
+            ? (String) request.getAttribute(ExternalAuthFilter.CONSUMER_ID_ATTR) : null);
+        audit.setSource(request.getAttribute(ExternalAuthFilter.SOURCE_ATTR) != null
+            ? (String) request.getAttribute(ExternalAuthFilter.SOURCE_ATTR) : "public");
         audit.setTimestamp(Instant.now());
         shlAuditLogRepository.save(audit);
         log.debug("SHL Audit: {} linkId={} recipient={}", action, linkId, recipient);

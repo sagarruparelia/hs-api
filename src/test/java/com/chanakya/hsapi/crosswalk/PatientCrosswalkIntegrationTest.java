@@ -1,6 +1,8 @@
 package com.chanakya.hsapi.crosswalk;
 
 import com.chanakya.hsapi.audit.AuditService;
+import com.chanakya.hsapi.auth.ExternalAuthFilter;
+import com.chanakya.hsapi.common.filter.RequestIdFilter;
 import com.chanakya.hsapi.shl.model.ShlAuditAction;
 import com.chanakya.hsapi.shl.model.ShlAuditLogDocument;
 import com.chanakya.hsapi.shl.repository.ShlAuditLogRepository;
@@ -66,9 +68,9 @@ class PatientCrosswalkIntegrationTest {
     @Test
     void auditWrite_andRead() {
         var request = new MockHttpServletRequest();
-        request.setAttribute("requestId", "test-req-001");
-        request.setAttribute("consumerId", "test-consumer");
-        request.setAttribute("source", "external");
+        request.setAttribute(RequestIdFilter.REQUEST_ID_ATTR, "test-req-001");
+        request.setAttribute(ExternalAuthFilter.CONSUMER_ID_ATTR, "test-consumer");
+        request.setAttribute(ExternalAuthFilter.SOURCE_ATTR, "external");
         request.setRemoteAddr("127.0.0.1");
         request.addHeader("User-Agent", "test-agent");
 

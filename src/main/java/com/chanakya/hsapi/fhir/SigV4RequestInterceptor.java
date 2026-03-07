@@ -1,5 +1,6 @@
 package com.chanakya.hsapi.fhir;
 
+import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpRequest;
 import org.springframework.http.client.ClientHttpRequestExecution;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
@@ -25,8 +26,8 @@ public class SigV4RequestInterceptor implements ClientHttpRequestInterceptor {
     }
 
     @Override
-    public ClientHttpResponse intercept(HttpRequest request, byte[] body,
-                                         ClientHttpRequestExecution execution) throws IOException {
+    public ClientHttpResponse intercept(@NonNull HttpRequest request, @NonNull byte[] body,
+                                         @NonNull ClientHttpRequestExecution execution) throws IOException {
         try {
             URI uri = request.getURI();
             SdkHttpFullRequest.Builder sdkRequestBuilder = SdkHttpFullRequest.builder()

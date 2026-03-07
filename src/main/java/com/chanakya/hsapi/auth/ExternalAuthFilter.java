@@ -4,6 +4,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.jspecify.annotations.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -16,10 +17,12 @@ import java.util.List;
 public class ExternalAuthFilter extends OncePerRequestFilter {
 
     private static final String CONSUMER_ID_HEADER = "X-Consumer-Id";
+    public static final String CONSUMER_ID_ATTR = "consumerId";
+    public static final String SOURCE_ATTR = "source";
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
-                                    FilterChain filterChain) throws ServletException, IOException {
+    protected void doFilterInternal(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response,
+                                    @NonNull FilterChain filterChain) throws ServletException, IOException {
         String path = request.getRequestURI();
 
         if (!path.startsWith("/secure/api/") && !path.equals("/graphql")) {
@@ -31,8 +34,7 @@ public class ExternalAuthFilter extends OncePerRequestFilter {
         if (consumerId == null || consumerId.isBlank()) {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             response.setContentType("application/json");
-            response.getWriter().write("""
-                {"error":"unauthorized","message":"X-Consumer-Id header is required"}""");
+            response.getWriter().write("{\"error\":\"unauthorized\",\"message\":\"X-Consumer-Id header is required\"}");
             return;
         }
 
@@ -40,8 +42,8 @@ public class ExternalAuthFilter extends OncePerRequestFilter {
         SecurityContextHolder.getContext().setAuthentication(authentication);
 
         // Store in request attributes for downstream access (ScopedValue doesn't span filter chain)
-        request.setAttribute("consumerId", consumerId);
-        request.setAttribute("source", "external");
+        request.setAttribute(CONSUMER_ID_ATTR, consumerId);
+        request.setAttribute(SOURCE_ATTR, "external");
 
         filterChain.doFilter(request, response);
     }

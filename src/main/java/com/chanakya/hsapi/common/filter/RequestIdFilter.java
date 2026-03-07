@@ -4,6 +4,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.MDC;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -18,24 +19,25 @@ import java.util.regex.Pattern;
 public class RequestIdFilter extends OncePerRequestFilter {
 
     private static final String REQUEST_ID_HEADER = "X-Request-Id";
+    public static final String REQUEST_ID_ATTR = REQUEST_ID_ATTR;
     private static final Pattern VALID_REQUEST_ID = Pattern.compile("^[a-zA-Z0-9\\-]{1,64}$");
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
-                                    FilterChain filterChain) throws ServletException, IOException {
+    protected void doFilterInternal(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response,
+                                    @NonNull FilterChain filterChain) throws ServletException, IOException {
         String requestId = request.getHeader(REQUEST_ID_HEADER);
         if (requestId == null || requestId.isBlank() || !VALID_REQUEST_ID.matcher(requestId).matches()) {
             requestId = UUID.randomUUID().toString();
         }
 
-        request.setAttribute("requestId", requestId);
+        request.setAttribute(REQUEST_ID_ATTR, requestId);
         response.setHeader(REQUEST_ID_HEADER, requestId);
 
-        MDC.put("requestId", requestId);
+        MDC.put(REQUEST_ID_ATTR, requestId);
         try {
             filterChain.doFilter(request, response);
         } finally {
-            MDC.remove("requestId");
+            MDC.remove(REQUEST_ID_ATTR);
         }
     }
 }

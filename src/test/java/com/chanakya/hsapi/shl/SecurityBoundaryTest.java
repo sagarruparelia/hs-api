@@ -31,8 +31,7 @@ class SecurityBoundaryTest {
     void securedEndpoint_withoutConsumerId_returns401() throws Exception {
         mockMvc.perform(post("/secure/api/v1/shl/search")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"idType":"EID","idValue":"test-123"}"""))
+                .content("{\"idType\":\"EID\",\"idValue\":\"test-123\"}"))
             .andExpect(status().isUnauthorized());
     }
 
@@ -41,8 +40,7 @@ class SecurityBoundaryTest {
         mockMvc.perform(post("/secure/api/v1/shl/search")
                 .header("X-Consumer-Id", "test-consumer")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"idType":"EID","idValue":"test-123"}"""))
+                .content("{\"idType\":\"EID\",\"idValue\":\"test-123\"}"))
             .andExpect(status().isOk());
     }
 
@@ -84,8 +82,8 @@ class SecurityBoundaryTest {
     void publicPost_withoutRecipient_returns400() throws Exception {
         mockMvc.perform(post("/shl/some-id")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"other":"field"}"""))
+                .content("{\"other\":\"field\"}"))
+
             .andExpect(status().isBadRequest());
     }
 
@@ -93,8 +91,8 @@ class SecurityBoundaryTest {
     void publicPost_nonexistentId_returns404() throws Exception {
         mockMvc.perform(post("/shl/nonexistent-id")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"recipient":"Dr. Smith"}"""))
+                .content("{\"recipient\":\"Dr. Smith\"}"))
+
             .andExpect(status().isNotFound());
     }
 
@@ -111,8 +109,7 @@ class SecurityBoundaryTest {
     void graphql_withoutConsumerId_returns401() throws Exception {
         mockMvc.perform(post("/graphql")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"query":"{ __schema { types { name } } }"}"""))
+                .content("{\"query\":\"{ __schema { types { name } } }\"}"))
             .andExpect(status().isUnauthorized());
     }
 
@@ -121,8 +118,7 @@ class SecurityBoundaryTest {
         mockMvc.perform(post("/graphql")
                 .header("X-Consumer-Id", "test-consumer")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"query":"{ __schema { types { name } } }"}"""))
+                .content("{\"query\":\"{ __schema { types { name } } }\"}"))
             .andExpect(status().isOk());
     }
 

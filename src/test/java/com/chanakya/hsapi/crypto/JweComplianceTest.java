@@ -18,8 +18,7 @@ class JweComplianceTest {
     private final KeyGenerationService keyGen = new KeyGenerationService();
     private final EncryptionService encryption = new EncryptionService();
 
-    private static final String SAMPLE_FHIR = """
-        {"resourceType":"Bundle","type":"collection","timestamp":"2026-03-06T00:00:00Z","entry":[]}""";
+    private static final String SAMPLE_FHIR = "{\"resourceType\":\"Bundle\",\"type\":\"collection\",\"timestamp\":\"2026-03-06T00:00:00Z\",\"entry\":[]}";
 
     @Test
     void jwe_usesDirectAlgorithm() throws Exception {
